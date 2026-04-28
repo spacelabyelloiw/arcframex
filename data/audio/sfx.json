@@ -1,0 +1,15 @@
+{
+  "ui_move": {"type": "blip", "frequency": 440, "duration": 0.04, "volume_db": -18},
+  "ui_confirm": {"type": "chirp", "frequency_start": 520, "frequency_end": 840, "duration": 0.08, "volume_db": -16},
+  "player_shot": {"type": "pulse", "frequency": 920, "duration": 0.05, "volume_db": -14},
+  "player_charge_loop": {"type": "hum", "frequency_start": 180, "frequency_end": 360, "duration": 1.2, "volume_db": -20},
+  "charge_release": {"type": "sweep", "frequency_start": 1200, "frequency_end": 260, "duration": 0.18, "volume_db": -10},
+  "bomb": {"type": "noise_burst", "frequency": 90, "duration": 0.65, "volume_db": -8},
+  "enemy_hit": {"type": "click", "frequency": 700, "duration": 0.035, "volume_db": -18},
+  "enemy_destroy": {"type": "noise_pop", "frequency_start": 260, "frequency_end": 90, "duration": 0.22, "volume_db": -12},
+  "player_hit": {"type": "zap", "frequency_start": 180, "frequency_end": 70, "duration": 0.25, "volume_db": -10},
+  "pickup": {"type": "arpeggio", "frequencies": [660, 880, 1320], "duration": 0.18, "volume_db": -14},
+  "boss_warning": {"type": "alarm", "frequency": 330, "duration": 0.5, "volume_db": -12},
+  "boss_destroy": {"type": "multi_blast", "frequency_start": 180, "frequency_end": 45, "duration": 1.4, "volume_db": -8}
+}
+

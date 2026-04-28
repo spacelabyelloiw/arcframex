@@ -1,0 +1,21 @@
+{
+  "id": "base_twin_vulcan",
+  "display_name": "Twin Vulcan",
+  "type": "base_weapon",
+  "ammo_max": -1,
+  "ammo_cost": 0,
+  "cooldown": 0.11,
+  "damage": 1,
+  "projectile_scene": "res://scenes/bullets/twin_vulcan_projectile.tscn",
+  "palette_id": "prototype",
+  "charged": {
+    "enabled_requires_upgrade": null,
+    "charge_time": 1.2,
+    "ammo_cost": 0,
+    "damage": 4,
+    "effect": "piercing_laser"
+  },
+  "can_clear_bullets": false,
+  "can_open_secret_tags": []
+}
+

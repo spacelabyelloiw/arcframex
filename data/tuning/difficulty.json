@@ -1,0 +1,27 @@
+{
+  "rookie": {
+    "shield_pips": 2,
+    "enemy_health_mult": 0.85,
+    "enemy_bullet_speed_mult": 0.85,
+    "enemy_bullet_density_mult": 0.7,
+    "boss_health_mult": 0.85,
+    "bomb_charges_start": 2
+  },
+  "hunter": {
+    "shield_pips": 1,
+    "enemy_health_mult": 1.0,
+    "enemy_bullet_speed_mult": 1.0,
+    "enemy_bullet_density_mult": 1.0,
+    "boss_health_mult": 1.0,
+    "bomb_charges_start": 1
+  },
+  "ace": {
+    "shield_pips": 0,
+    "enemy_health_mult": 1.15,
+    "enemy_bullet_speed_mult": 1.15,
+    "enemy_bullet_density_mult": 1.25,
+    "boss_health_mult": 1.15,
+    "bomb_charges_start": 1
+  }
+}
+

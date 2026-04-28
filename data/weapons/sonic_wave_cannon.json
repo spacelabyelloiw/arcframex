@@ -1,0 +1,21 @@
+{
+  "id": "sonic_wave_cannon",
+  "display_name": "Sonic Wave Cannon",
+  "type": "frame_weapon",
+  "ammo_max": 100,
+  "ammo_cost": 5,
+  "cooldown": 0.35,
+  "damage": 8,
+  "projectile_scene": "res://scenes/bullets/sonic_wave_projectile.tscn",
+  "palette_id": "signal",
+  "charged": {
+    "enabled_requires_upgrade": "buster_array",
+    "charge_time": 1.1,
+    "ammo_cost": 15,
+    "damage": 22,
+    "effect": "wide_resonance_cone"
+  },
+  "can_clear_bullets": false,
+  "can_open_secret_tags": ["sonic_gate", "shield_resonance_lock"]
+}
+

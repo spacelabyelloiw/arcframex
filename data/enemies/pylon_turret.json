@@ -1,0 +1,13 @@
+{
+  "id": "pylon_turret",
+  "display_name": "Pylon Turret",
+  "scene": "res://scenes/enemies/enemy_pylon_turret.tscn",
+  "max_health": 8,
+  "contact_damage": 1,
+  "score_value": 250,
+  "movement_pattern": "stationary_scroll",
+  "fire_pattern": "aimed_triplet",
+  "drop_table": "turret_enemy",
+  "tags": ["ground", "turret", "industrial"]
+}
+

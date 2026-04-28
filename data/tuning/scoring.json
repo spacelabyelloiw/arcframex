@@ -1,0 +1,13 @@
+{
+  "combo_timeout": 2.0,
+  "graze_value": 5,
+  "pickup_score_value": 500,
+  "no_miss_bonus": 10000,
+  "rank_thresholds": {
+    "s": 90000,
+    "a": 70000,
+    "b": 50000,
+    "c": 30000
+  }
+}
+

@@ -1,0 +1,24 @@
+{
+  "id": "null_relay_seraph",
+  "display_name": "Null Relay Seraph",
+  "scene": "res://scenes/bosses/boss_null_relay_seraph.tscn",
+  "max_health": 450,
+  "phase_markers": [0.6, 0.2],
+  "weakness_weapon_ids": [],
+  "phases": [
+    {
+      "health_min": 0.6,
+      "patterns": ["radial_pulse", "aimed_triplet"]
+    },
+    {
+      "health_min": 0.2,
+      "patterns": ["sonic_rings", "summon_side_drones"]
+    },
+    {
+      "health_min": 0.0,
+      "patterns": ["warning_beam_lanes", "fast_radial_burst"]
+    }
+  ],
+  "reward_weapon_id": "sonic_wave_cannon"
+}
+

@@ -1,0 +1,13 @@
+{
+  "id": "relay_carrier",
+  "display_name": "Relay Carrier",
+  "scene": "res://scenes/enemies/enemy_relay_carrier.tscn",
+  "max_health": 12,
+  "contact_damage": 1,
+  "score_value": 400,
+  "movement_pattern": "slow_centerline",
+  "fire_pattern": "spawn_drones",
+  "drop_table": "carrier_enemy",
+  "tags": ["flying", "spawner", "elite"]
+}
+

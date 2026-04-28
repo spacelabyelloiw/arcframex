@@ -1,0 +1,13 @@
+{
+  "id": "choir_drone",
+  "display_name": "Choir Drone",
+  "scene": "res://scenes/enemies/enemy_choir_drone.tscn",
+  "max_health": 3,
+  "contact_damage": 1,
+  "score_value": 100,
+  "movement_pattern": "path_follow",
+  "fire_pattern": "single_straight",
+  "drop_table": "basic_enemy",
+  "tags": ["flying", "choirborne", "basic"]
+}
+

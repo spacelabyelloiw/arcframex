@@ -1,0 +1,13 @@
+{
+  "id": "needle_runner",
+  "display_name": "Needle Runner",
+  "scene": "res://scenes/enemies/enemy_needle_runner.tscn",
+  "max_health": 2,
+  "contact_damage": 1,
+  "score_value": 120,
+  "movement_pattern": "fast_strafe",
+  "fire_pattern": "none",
+  "drop_table": "basic_enemy",
+  "tags": ["flying", "fast", "rammer"]
+}
+
