@@ -26,3 +26,20 @@ Replacement notes:
 - The current gameplay hitboxes are smaller than the sprite art on purpose.
 - Do not overwrite these files without also updating this log or adding versioned filenames.
 
+## 2026-04-28: Sky Arc Breach Scrolling Background
+
+Mode: built-in image generation tool, using the user's supplied reference image as look-and-feel guidance.
+
+Generated asset:
+
+- `assets/art/backgrounds/bg_sky_arc_breach.png`
+
+Prompt summary:
+
+Generated an original vertical scrolling shooter background inspired by the reference: a futuristic industrial sky fortress deck with a central runway, dark gunmetal panels, orange hazard markings, blue glow strips, mechanical towers, and clouds/blue sky visible between structures. The prompt explicitly excluded UI, ships, enemies, bullets, text, and watermarking.
+
+Implementation notes:
+
+- The prototype draws this image scaled to the 960px playfield width.
+- It loops vertically under gameplay at a slightly slower scroll than the star/grid overlay.
+- A dark translucent overlay is applied in code to preserve bullet readability.

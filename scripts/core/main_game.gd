@@ -18,6 +18,7 @@ var player_texture: Texture2D = preload("res://assets/art/player/spr_player_ship
 var choir_drone_texture: Texture2D = preload("res://assets/art/enemies/spr_choir_drone.png")
 var needle_runner_texture: Texture2D = preload("res://assets/art/enemies/spr_needle_runner.png")
 var boss_texture: Texture2D = preload("res://assets/art/bosses/spr_null_relay_seraph.png")
+var sky_arc_background_texture: Texture2D = preload("res://assets/art/backgrounds/bg_sky_arc_breach.png")
 
 var game_state := "title"
 var player_pos := Vector2.ZERO
@@ -572,11 +573,28 @@ func _draw_side_panels() -> void:
 
 
 func _draw_playfield() -> void:
-	draw_rect(PLAYFIELD, Color("#0b1730"))
+	_draw_scrolling_background()
 	for i in range(10):
 		var y := PLAYFIELD.position.y + fmod(stage_time * 70.0 + i * 90.0, PLAYFIELD.size.y)
 		draw_line(Vector2(PLAYFIELD.position.x, y), Vector2(PLAYFIELD.end.x, y), Color(0.1, 0.85, 1.0, 0.18), 1.0)
 	draw_rect(PLAYFIELD, Color("#7df9ff"), false, 3.0)
+
+
+func _draw_scrolling_background() -> void:
+	if sky_arc_background_texture == null:
+		draw_rect(PLAYFIELD, Color("#0b1730"))
+		return
+
+	var bg_height := PLAYFIELD.size.x * float(sky_arc_background_texture.get_height()) / float(sky_arc_background_texture.get_width())
+	var scroll := fmod(stage_time * 88.0, bg_height)
+	var bg_size := Vector2(PLAYFIELD.size.x, bg_height)
+	var first_y := PLAYFIELD.position.y - scroll
+	while first_y > PLAYFIELD.position.y:
+		first_y -= bg_height
+	for i in range(3):
+		var dst := Rect2(Vector2(PLAYFIELD.position.x, first_y + bg_height * float(i)), bg_size)
+		draw_texture_rect(sky_arc_background_texture, dst, false)
+	draw_rect(PLAYFIELD, Color(0.02, 0.05, 0.09, 0.18))
 
 
 func _draw_stars() -> void:

@@ -23,6 +23,7 @@ This is the first playable prototype slice. It is not the full first-build miles
 
 - Press Enter on the title screen.
 - Fly inside the centered 4:3 playfield.
+- Watch for the generated Sky Arc Breach industrial background scrolling beneath the action.
 - Hold fire to shoot Twin Vulcan shots.
 - Destroy incoming enemy waves to build score and combo.
 - Survive until the boss warning, then defeat Null Relay Seraph.
