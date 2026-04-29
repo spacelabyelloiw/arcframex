@@ -14,6 +14,11 @@ const BOSS_MAX_HEALTH := 220
 const BOSS_RADIUS := 62.0
 const AUDIO_POOL_SIZE := 10
 
+var player_texture: Texture2D = preload("res://assets/art/player/spr_player_ship_base.png")
+var choir_drone_texture: Texture2D = preload("res://assets/art/enemies/spr_choir_drone.png")
+var needle_runner_texture: Texture2D = preload("res://assets/art/enemies/spr_needle_runner.png")
+var boss_texture: Texture2D = preload("res://assets/art/bosses/spr_null_relay_seraph.png")
+
 var game_state := "title"
 var player_pos := Vector2.ZERO
 var player_fire_timer := 0.0
@@ -587,53 +592,18 @@ func _draw_player() -> void:
 
 	var input_x := Input.get_axis("move_left", "move_right")
 	var lean := input_x * 7.0
-	var hull := PackedVector2Array([
-		player_pos + Vector2(0 + lean, -34),
-		player_pos + Vector2(28 + lean, 22),
-		player_pos + Vector2(8, 14),
-		player_pos + Vector2(0, 32),
-		player_pos + Vector2(-8, 14),
-		player_pos + Vector2(-28 + lean, 22)
-	])
-	var hull_outline := PackedVector2Array(hull)
-	hull_outline.append(hull[0])
-	draw_colored_polygon(hull, Color("#35c7ff"))
-	draw_polyline(hull_outline, Color("#e8f7ff"), 2.0)
+	_draw_texture_centered(player_texture, player_pos + Vector2(lean, -8), Vector2(118, 128))
+	draw_circle(player_pos, 5.0, Color(0.9, 1.0, 1.0, 0.85))
 	draw_circle(player_pos + Vector2(0, 2), 8.0, Color("#f7d36b"))
-	draw_circle(player_pos + Vector2(0, 39), 10.0 + sin(stage_time * 18.0) * 2.0, Color("#ff7a33"))
+	draw_circle(player_pos + Vector2(0, 42), 10.0 + sin(stage_time * 18.0) * 2.0, Color("#ff7a33"))
 
 
 func _draw_boss() -> void:
 	if not boss_started:
 		return
 
-	var wing_color := Color("#7437d8")
-	var core_color := Color("#ff5d78")
-	var glow_color := Color("#ffd166")
-	var left_wing := PackedVector2Array([
-		boss_pos + Vector2(-14, -34),
-		boss_pos + Vector2(-118, 0),
-		boss_pos + Vector2(-68, 42),
-		boss_pos + Vector2(-20, 26)
-	])
-	var right_wing := PackedVector2Array([
-		boss_pos + Vector2(14, -34),
-		boss_pos + Vector2(118, 0),
-		boss_pos + Vector2(68, 42),
-		boss_pos + Vector2(20, 26)
-	])
-	var core := PackedVector2Array([
-		boss_pos + Vector2(0, -58),
-		boss_pos + Vector2(44, -10),
-		boss_pos + Vector2(30, 48),
-		boss_pos + Vector2(0, 70),
-		boss_pos + Vector2(-30, 48),
-		boss_pos + Vector2(-44, -10)
-	])
-	draw_colored_polygon(left_wing, wing_color)
-	draw_colored_polygon(right_wing, wing_color)
-	draw_colored_polygon(core, core_color)
-	draw_circle(boss_pos + Vector2(0, 4), 20.0 + sin(boss_weave * 8.0) * 3.0, glow_color)
+	_draw_texture_centered(boss_texture, boss_pos + Vector2(0, 12), Vector2(330, 305))
+	draw_circle(boss_pos + Vector2(0, 4), 18.0 + sin(boss_weave * 8.0) * 3.0, Color(1.0, 0.35, 0.95, 0.65))
 	draw_arc(boss_pos, BOSS_RADIUS, 0.0, TAU, 32, Color("#ffe6f1"), 3.0)
 
 	var bar_width := 520.0
@@ -646,18 +616,15 @@ func _draw_boss() -> void:
 
 func _draw_enemy(enemy: Dictionary) -> void:
 	var enemy_type: String = enemy["type"]
-	var color := Color("#ff5d78") if enemy_type == "needle_runner" else Color("#b26dff")
 	var center: Vector2 = enemy["position"]
-	var body := PackedVector2Array([
-		center + Vector2(0, 28),
-		center + Vector2(25, -5),
-		center + Vector2(12, -24),
-		center + Vector2(0, -14),
-		center + Vector2(-12, -24),
-		center + Vector2(-25, -5)
-	])
-	var body_outline := PackedVector2Array(body)
-	body_outline.append(body[0])
-	draw_colored_polygon(body, color)
-	draw_polyline(body_outline, Color("#ffe6f1"), 2.0)
+	if enemy_type == "needle_runner":
+		_draw_texture_centered(needle_runner_texture, center + Vector2(0, 2), Vector2(78, 78))
+	else:
+		_draw_texture_centered(choir_drone_texture, center + Vector2(0, 2), Vector2(78, 70))
 	draw_circle(center, 7.0, Color("#ffd166"))
+
+
+func _draw_texture_centered(texture: Texture2D, center: Vector2, size: Vector2) -> void:
+	if texture == null:
+		return
+	draw_texture_rect(texture, Rect2(center - size * 0.5, size), false)
