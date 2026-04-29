@@ -1,6 +1,6 @@
 extends Node2D
 
-const PLAYFIELD := Rect2(Vector2(480, 180), Vector2(960, 720))
+const PLAYFIELD := Rect2(Vector2(240, 0), Vector2(1440, 1080))
 const PLAYER_RADIUS := 18.0
 const ENEMY_RADIUS := 22.0
 const BULLET_RADIUS := 6.0
