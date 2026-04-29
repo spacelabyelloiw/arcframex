@@ -25,13 +25,12 @@ This is the first playable prototype slice. It is not the full first-build miles
 - Fly inside the centered 4:3 playfield.
 - Hold fire to shoot Twin Vulcan shots.
 - Destroy incoming enemy waves to build score and combo.
-- Survive for 90 seconds to clear the prototype route.
+- Survive until the boss warning, then defeat Null Relay Seraph.
+- Defeating the boss triggers the weapon acquired screen.
 - If shields are gone, hits consume lives and respawn the player.
 
 ## Known Limitations
 
-- No boss yet.
 - No authored/generated sprite sheets yet; this slice uses code-drawn placeholder ships.
-- Procedural SFX definitions exist, but runtime sound generation is not wired in yet.
+- Procedural SFX are wired directly into the prototype scene; they should move to an `AudioManager` later.
 - GitHub Pages export may still fail until Godot accepts and imports the new main scene in CI.
-

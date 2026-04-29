@@ -9,6 +9,10 @@ const FOCUS_SPEED := 230.0
 const FIRE_INTERVAL := 0.11
 const ENEMY_SPAWN_INTERVAL := 0.9
 const ENEMY_BULLET_INTERVAL := 1.4
+const BOSS_TRIGGER_TIME := 45.0
+const BOSS_MAX_HEALTH := 220
+const BOSS_RADIUS := 62.0
+const AUDIO_POOL_SIZE := 10
 
 var game_state := "title"
 var player_pos := Vector2.ZERO
@@ -21,9 +25,17 @@ var lives := 3
 var shields := 1
 var invuln_timer := 0.0
 var paused := false
+var boss_started := false
+var boss_active := false
+var boss_intro_timer := 0.0
+var boss_pos := Vector2.ZERO
+var boss_health := BOSS_MAX_HEALTH
+var boss_fire_timer := 0.0
+var boss_weave := 0.0
 var bullets: Array[Dictionary] = []
 var enemies: Array[Dictionary] = []
 var enemy_bullets: Array[Dictionary] = []
+var audio_players: Array[AudioStreamPlayer] = []
 var rng := RandomNumberGenerator.new()
 var hud_layer: CanvasLayer
 var title_label: Label
@@ -34,6 +46,7 @@ var status_label: Label
 func _ready() -> void:
 	rng.randomize()
 	_ensure_input_map()
+	_setup_audio()
 	_setup_ui()
 	_reset_run()
 	set_process(true)
@@ -58,15 +71,18 @@ func _process(delta: float) -> void:
 	invuln_timer = maxf(invuln_timer - delta, 0.0)
 	_update_player(delta)
 	_update_player_fire(delta)
-	_update_enemy_spawning(delta)
+	if boss_started:
+		_update_boss(delta)
+	else:
+		_update_enemy_spawning(delta)
 	_update_bullets(delta)
 	_update_enemies(delta)
 	_update_enemy_bullets(delta)
 	_update_collisions()
 	_update_hud()
 
-	if stage_time >= 90.0:
-		_level_clear()
+	if stage_time >= BOSS_TRIGGER_TIME and not boss_started:
+		_start_boss()
 
 	queue_redraw()
 
@@ -90,6 +106,9 @@ func _draw() -> void:
 	for enemy in enemies:
 		_draw_enemy(enemy)
 
+	if boss_started:
+		_draw_boss()
+
 	if game_state == "playing" or game_state == "level_clear":
 		_draw_player()
 
@@ -108,6 +127,14 @@ func _setup_ui() -> void:
 	hud_layer.add_child(hud_label)
 	hud_layer.add_child(status_label)
 	_show_title()
+
+
+func _setup_audio() -> void:
+	for i in range(AUDIO_POOL_SIZE):
+		var player := AudioStreamPlayer.new()
+		player.bus = "Master"
+		add_child(player)
+		audio_players.append(player)
 
 
 func _make_label(pos: Vector2, size: Vector2, font_size: int, align: HorizontalAlignment) -> Label:
@@ -154,6 +181,13 @@ func _reset_run() -> void:
 	shields = 1
 	invuln_timer = 0.0
 	paused = false
+	boss_started = false
+	boss_active = false
+	boss_intro_timer = 0.0
+	boss_pos = Vector2(PLAYFIELD.position.x + PLAYFIELD.size.x * 0.5, PLAYFIELD.position.y + 130.0)
+	boss_health = BOSS_MAX_HEALTH
+	boss_fire_timer = 0.0
+	boss_weave = 0.0
 	bullets.clear()
 	enemies.clear()
 	enemy_bullets.clear()
@@ -173,6 +207,7 @@ func _update_player_fire(delta: float) -> void:
 		player_fire_timer = FIRE_INTERVAL
 		bullets.append({"position": player_pos + Vector2(-10, -24), "velocity": Vector2(0, -900), "damage": 1})
 		bullets.append({"position": player_pos + Vector2(10, -24), "velocity": Vector2(0, -900), "damage": 1})
+		_play_sfx("player_shot")
 
 
 func _update_enemy_spawning(delta: float) -> void:
@@ -221,6 +256,66 @@ func _update_enemies(delta: float) -> void:
 	enemies = enemies.filter(_is_enemy_active)
 
 
+func _start_boss() -> void:
+	boss_started = true
+	boss_active = false
+	boss_intro_timer = 2.2
+	boss_pos = Vector2(PLAYFIELD.position.x + PLAYFIELD.size.x * 0.5, PLAYFIELD.position.y - 90.0)
+	boss_health = BOSS_MAX_HEALTH
+	boss_fire_timer = 0.8
+	enemies.clear()
+	enemy_bullets.clear()
+	status_label.text = "WARNING: NULL RELAY SERAPH"
+	_play_sfx("boss_warning")
+
+
+func _update_boss(delta: float) -> void:
+	boss_weave += delta
+	if boss_intro_timer > 0.0:
+		boss_intro_timer -= delta
+		boss_pos = boss_pos.lerp(Vector2(PLAYFIELD.position.x + PLAYFIELD.size.x * 0.5, PLAYFIELD.position.y + 135.0), delta * 1.8)
+		if boss_intro_timer <= 0.0:
+			boss_active = true
+			status_label.text = ""
+		return
+
+	boss_pos.x = PLAYFIELD.position.x + PLAYFIELD.size.x * 0.5 + sin(boss_weave * 1.4) * 210.0
+	boss_pos.y = PLAYFIELD.position.y + 132.0 + sin(boss_weave * 2.1) * 24.0
+	boss_fire_timer -= delta
+	if boss_fire_timer <= 0.0:
+		_fire_boss_pattern()
+
+
+func _fire_boss_pattern() -> void:
+	var health_ratio := float(boss_health) / float(BOSS_MAX_HEALTH)
+	if health_ratio > 0.6:
+		boss_fire_timer = 1.0
+		_fire_boss_spread(5, 230.0, PI * 0.26)
+	elif health_ratio > 0.25:
+		boss_fire_timer = 0.75
+		_fire_boss_spread(7, 250.0, PI * 0.42)
+		_fire_aimed_boss_shot(290.0)
+	else:
+		boss_fire_timer = 0.55
+		_fire_boss_spread(9, 285.0, PI * 0.55)
+		_fire_aimed_boss_shot(340.0)
+
+
+func _fire_boss_spread(count: int, speed: float, arc_width: float) -> void:
+	var start_angle := PI * 0.5 - arc_width * 0.5
+	var step := arc_width / float(maxi(count - 1, 1))
+	for i in range(count):
+		var angle := start_angle + step * float(i)
+		var velocity := Vector2(cos(angle), sin(angle)) * speed
+		enemy_bullets.append({"position": boss_pos + Vector2(0, 46), "velocity": velocity})
+
+
+func _fire_aimed_boss_shot(speed: float) -> void:
+	var to_player: Vector2 = (player_pos - boss_pos).normalized()
+	enemy_bullets.append({"position": boss_pos + Vector2(-28, 30), "velocity": to_player.rotated(-0.1) * speed})
+	enemy_bullets.append({"position": boss_pos + Vector2(28, 30), "velocity": to_player.rotated(0.1) * speed})
+
+
 func _update_enemy_bullets(delta: float) -> void:
 	for enemy_bullet in enemy_bullets:
 		var bullet_position: Vector2 = enemy_bullet["position"]
@@ -231,6 +326,17 @@ func _update_enemy_bullets(delta: float) -> void:
 
 
 func _update_collisions() -> void:
+	if boss_active:
+		for bullet in bullets:
+			var bullet_position_for_boss: Vector2 = bullet["position"]
+			if boss_pos.distance_to(bullet_position_for_boss) <= BOSS_RADIUS + BULLET_RADIUS:
+				boss_health -= int(bullet["damage"])
+				bullet["position"] = Vector2(bullet_position_for_boss.x, -9999.0)
+				score += 5
+				if boss_health <= 0:
+					_defeat_boss()
+					return
+
 	for enemy in enemies:
 		for bullet in bullets:
 			var enemy_position: Vector2 = enemy["position"]
@@ -241,6 +347,7 @@ func _update_collisions() -> void:
 				if int(enemy["health"]) <= 0:
 					score += 100 + combo * 10
 					combo += 1
+					_play_sfx("enemy_destroy")
 
 	bullets = bullets.filter(_is_player_bullet_active)
 
@@ -265,6 +372,7 @@ func _update_collisions() -> void:
 func _damage_player() -> void:
 	invuln_timer = 2.0
 	combo = 0
+	_play_sfx("player_hit")
 	if shields > 0:
 		shields -= 1
 		return
@@ -284,19 +392,35 @@ func _game_over() -> void:
 	title_label.text = "GAME OVER"
 	subtitle_label.text = "Press Enter or Start to retry"
 	status_label.text = "Score: %d" % score
+	_play_sfx("player_hit")
 
 
 func _level_clear() -> void:
 	game_state = "level_clear"
-	title_label.text = "SKY ARC BREACH CLEAR"
-	subtitle_label.text = "Prototype route complete"
-	status_label.text = "Score: %d  |  Press Enter or Start" % score
+	title_label.text = "WEAPON ACQUIRED"
+	subtitle_label.text = "Sonic Wave Cannon"
+	status_label.text = "Sky Arc Breach clear  |  Score: %d  |  Press Enter or Start" % score
 	enemies.clear()
 	enemy_bullets.clear()
+	_play_sfx("pickup")
+
+
+func _defeat_boss() -> void:
+	boss_active = false
+	boss_started = false
+	boss_health = 0
+	score += 5000 + combo * 25
+	combo += 10
+	bullets.clear()
+	enemy_bullets.clear()
+	_level_clear()
 
 
 func _update_hud() -> void:
-	hud_label.text = "LIVES %d   SHIELD %d   SCORE %06d   COMBO x%d   TIME %02d" % [maxi(lives, 0), shields, score, combo, int(stage_time)]
+	var boss_text := ""
+	if boss_started:
+		boss_text = "   BOSS %03d/%03d" % [maxi(boss_health, 0), BOSS_MAX_HEALTH]
+	hud_label.text = "LIVES %d   SHIELD %d   SCORE %06d   COMBO x%d   TIME %02d%s" % [maxi(lives, 0), shields, score, combo, int(stage_time), boss_text]
 
 
 func _is_player_bullet_active(bullet: Dictionary) -> bool:
@@ -312,6 +436,101 @@ func _is_enemy_active(enemy: Dictionary) -> bool:
 func _is_enemy_bullet_active(enemy_bullet: Dictionary) -> bool:
 	var bullet_position: Vector2 = enemy_bullet["position"]
 	return PLAYFIELD.grow(60.0).has_point(bullet_position)
+
+
+func _play_sfx(sfx_name: String) -> void:
+	var stream := _build_sfx_stream(sfx_name)
+	for player in audio_players:
+		if not player.playing:
+			player.stream = stream
+			player.play()
+			return
+
+	audio_players[0].stream = stream
+	audio_players[0].play()
+
+
+func _build_sfx_stream(sfx_name: String) -> AudioStreamWAV:
+	var frequency := 520.0
+	var duration := 0.08
+	var volume := 0.22
+	var waveform := "sine"
+	var end_frequency := frequency
+
+	match sfx_name:
+		"player_shot":
+			frequency = 980.0
+			end_frequency = 760.0
+			duration = 0.045
+			volume = 0.13
+			waveform = "pulse"
+		"enemy_destroy":
+			frequency = 260.0
+			end_frequency = 90.0
+			duration = 0.16
+			volume = 0.22
+			waveform = "noise"
+		"player_hit":
+			frequency = 190.0
+			end_frequency = 70.0
+			duration = 0.22
+			volume = 0.28
+			waveform = "saw"
+		"boss_warning":
+			frequency = 330.0
+			end_frequency = 330.0
+			duration = 0.55
+			volume = 0.2
+			waveform = "alarm"
+		"pickup":
+			frequency = 660.0
+			end_frequency = 1320.0
+			duration = 0.28
+			volume = 0.24
+			waveform = "sine"
+
+	return _make_wav(frequency, end_frequency, duration, volume, waveform)
+
+
+func _make_wav(frequency: float, end_frequency: float, duration: float, volume: float, waveform: String) -> AudioStreamWAV:
+	var mix_rate := 22050
+	var sample_count := int(duration * float(mix_rate))
+	var bytes := PackedByteArray()
+	bytes.resize(sample_count * 2)
+
+	for i in range(sample_count):
+		var t := float(i) / float(mix_rate)
+		var progress := float(i) / float(maxi(sample_count - 1, 1))
+		var current_frequency := lerpf(frequency, end_frequency, progress)
+		var envelope := sin(progress * PI)
+		var sample := _sample_wave(waveform, current_frequency, t, progress) * envelope * volume
+		var int_sample := int(clampf(sample, -1.0, 1.0) * 32767.0)
+		if int_sample < 0:
+			int_sample = 65536 + int_sample
+		bytes[i * 2] = int_sample & 0xff
+		bytes[i * 2 + 1] = (int_sample >> 8) & 0xff
+
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = mix_rate
+	stream.stereo = false
+	stream.data = bytes
+	return stream
+
+
+func _sample_wave(waveform: String, frequency: float, t: float, progress: float) -> float:
+	match waveform:
+		"pulse":
+			return 1.0 if sin(TAU * frequency * t) >= 0.0 else -1.0
+		"saw":
+			return 2.0 * fmod(frequency * t, 1.0) - 1.0
+		"noise":
+			return rng.randf_range(-1.0, 1.0) * (1.0 - progress * 0.35)
+		"alarm":
+			var gate := 1.0 if int(progress * 12.0) % 2 == 0 else 0.35
+			return sin(TAU * frequency * t) * gate
+		_:
+			return sin(TAU * frequency * t)
 
 
 func _ensure_input_map() -> void:
@@ -382,6 +601,47 @@ func _draw_player() -> void:
 	draw_polyline(hull_outline, Color("#e8f7ff"), 2.0)
 	draw_circle(player_pos + Vector2(0, 2), 8.0, Color("#f7d36b"))
 	draw_circle(player_pos + Vector2(0, 39), 10.0 + sin(stage_time * 18.0) * 2.0, Color("#ff7a33"))
+
+
+func _draw_boss() -> void:
+	if not boss_started:
+		return
+
+	var wing_color := Color("#7437d8")
+	var core_color := Color("#ff5d78")
+	var glow_color := Color("#ffd166")
+	var left_wing := PackedVector2Array([
+		boss_pos + Vector2(-14, -34),
+		boss_pos + Vector2(-118, 0),
+		boss_pos + Vector2(-68, 42),
+		boss_pos + Vector2(-20, 26)
+	])
+	var right_wing := PackedVector2Array([
+		boss_pos + Vector2(14, -34),
+		boss_pos + Vector2(118, 0),
+		boss_pos + Vector2(68, 42),
+		boss_pos + Vector2(20, 26)
+	])
+	var core := PackedVector2Array([
+		boss_pos + Vector2(0, -58),
+		boss_pos + Vector2(44, -10),
+		boss_pos + Vector2(30, 48),
+		boss_pos + Vector2(0, 70),
+		boss_pos + Vector2(-30, 48),
+		boss_pos + Vector2(-44, -10)
+	])
+	draw_colored_polygon(left_wing, wing_color)
+	draw_colored_polygon(right_wing, wing_color)
+	draw_colored_polygon(core, core_color)
+	draw_circle(boss_pos + Vector2(0, 4), 20.0 + sin(boss_weave * 8.0) * 3.0, glow_color)
+	draw_arc(boss_pos, BOSS_RADIUS, 0.0, TAU, 32, Color("#ffe6f1"), 3.0)
+
+	var bar_width := 520.0
+	var bar_pos := Vector2(PLAYFIELD.position.x + (PLAYFIELD.size.x - bar_width) * 0.5, PLAYFIELD.position.y + 22.0)
+	var health_ratio := clampf(float(boss_health) / float(BOSS_MAX_HEALTH), 0.0, 1.0)
+	draw_rect(Rect2(bar_pos, Vector2(bar_width, 16)), Color("#1f1024"))
+	draw_rect(Rect2(bar_pos, Vector2(bar_width * health_ratio, 16)), Color("#ff5d78"))
+	draw_rect(Rect2(bar_pos, Vector2(bar_width, 16)), Color("#ffe6f1"), false, 2.0)
 
 
 func _draw_enemy(enemy: Dictionary) -> void:
