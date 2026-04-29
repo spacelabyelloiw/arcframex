@@ -13,6 +13,9 @@ const BOSS_TRIGGER_TIME := 45.0
 const BOSS_MAX_HEALTH := 220
 const BOSS_RADIUS := 62.0
 const AUDIO_POOL_SIZE := 10
+const CHARGE_TIME := 1.2
+const CHARGE_LASER_DURATION := 0.22
+const CHARGE_LASER_WIDTH := 52.0
 
 var player_texture: Texture2D = preload("res://assets/art/player/spr_player_ship_base.png")
 var choir_drone_texture: Texture2D = preload("res://assets/art/enemies/spr_choir_drone.png")
@@ -29,8 +32,15 @@ var score := 0
 var combo := 0
 var lives := 3
 var shields := 1
+var bombs := 3
 var invuln_timer := 0.0
 var paused := false
+var charge_timer := 0.0
+var was_fire_pressed := false
+var bomb_flash_timer := 0.0
+var shake_timer := 0.0
+var shake_strength := 0.0
+var boss_hit_flash := 0.0
 var boss_started := false
 var boss_active := false
 var boss_intro_timer := 0.0
@@ -41,6 +51,8 @@ var boss_weave := 0.0
 var bullets: Array[Dictionary] = []
 var enemies: Array[Dictionary] = []
 var enemy_bullets: Array[Dictionary] = []
+var charged_lasers: Array[Dictionary] = []
+var effects: Array[Dictionary] = []
 var audio_players: Array[AudioStreamPlayer] = []
 var rng := RandomNumberGenerator.new()
 var hud_layer: CanvasLayer
@@ -75,15 +87,21 @@ func _process(delta: float) -> void:
 
 	stage_time += delta
 	invuln_timer = maxf(invuln_timer - delta, 0.0)
+	bomb_flash_timer = maxf(bomb_flash_timer - delta, 0.0)
+	shake_timer = maxf(shake_timer - delta, 0.0)
+	boss_hit_flash = maxf(boss_hit_flash - delta, 0.0)
 	_update_player(delta)
 	_update_player_fire(delta)
+	_update_bomb_input()
 	if boss_started:
 		_update_boss(delta)
 	else:
 		_update_enemy_spawning(delta)
 	_update_bullets(delta)
+	_update_charged_lasers(delta)
 	_update_enemies(delta)
 	_update_enemy_bullets(delta)
+	_update_effects(delta)
 	_update_collisions()
 	_update_hud()
 
@@ -95,6 +113,7 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), Color("#07101e"))
+	draw_set_transform(_get_shake_offset(), 0.0, Vector2.ONE)
 	_draw_side_panels()
 	_draw_playfield()
 	_draw_stars()
@@ -109,6 +128,9 @@ func _draw() -> void:
 		draw_circle(enemy_bullet_position, 8.0, Color("#ff5d78"))
 		draw_arc(enemy_bullet_position, 13.0, 0.0, TAU, 20, Color("#ffd166"), 2.0)
 
+	for laser in charged_lasers:
+		_draw_charged_laser(laser)
+
 	for enemy in enemies:
 		_draw_enemy(enemy)
 
@@ -117,6 +139,15 @@ func _draw() -> void:
 
 	if game_state == "playing" or game_state == "level_clear":
 		_draw_player()
+
+	for effect in effects:
+		_draw_effect(effect)
+
+	if bomb_flash_timer > 0.0:
+		var alpha := minf(bomb_flash_timer * 3.0, 0.32)
+		draw_rect(PLAYFIELD, Color(0.3, 0.9, 1.0, alpha))
+
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _setup_ui() -> void:
@@ -185,8 +216,15 @@ func _reset_run() -> void:
 	combo = 0
 	lives = 3
 	shields = 1
+	bombs = 3
 	invuln_timer = 0.0
 	paused = false
+	charge_timer = 0.0
+	was_fire_pressed = false
+	bomb_flash_timer = 0.0
+	shake_timer = 0.0
+	shake_strength = 0.0
+	boss_hit_flash = 0.0
 	boss_started = false
 	boss_active = false
 	boss_intro_timer = 0.0
@@ -197,6 +235,8 @@ func _reset_run() -> void:
 	bullets.clear()
 	enemies.clear()
 	enemy_bullets.clear()
+	charged_lasers.clear()
+	effects.clear()
 
 
 func _update_player(delta: float) -> void:
@@ -209,11 +249,76 @@ func _update_player(delta: float) -> void:
 
 func _update_player_fire(delta: float) -> void:
 	player_fire_timer -= delta
-	if Input.is_action_pressed("fire") and player_fire_timer <= 0.0:
+	var fire_pressed := Input.is_action_pressed("fire")
+	if fire_pressed:
+		charge_timer = minf(charge_timer + delta, CHARGE_TIME)
+	else:
+		if was_fire_pressed and charge_timer >= CHARGE_TIME:
+			_fire_charged_laser()
+		charge_timer = 0.0
+
+	if fire_pressed and player_fire_timer <= 0.0:
 		player_fire_timer = FIRE_INTERVAL
 		bullets.append({"position": player_pos + Vector2(-10, -24), "velocity": Vector2(0, -900), "damage": 1})
 		bullets.append({"position": player_pos + Vector2(10, -24), "velocity": Vector2(0, -900), "damage": 1})
 		_play_sfx("player_shot")
+	was_fire_pressed = fire_pressed
+
+
+func _fire_charged_laser() -> void:
+	charged_lasers.append({
+		"x": player_pos.x,
+		"top_y": PLAYFIELD.position.y,
+		"bottom_y": player_pos.y - 28.0,
+		"ttl": CHARGE_LASER_DURATION,
+		"age": 0.0,
+		"width": CHARGE_LASER_WIDTH
+	})
+	_apply_charged_laser_damage(player_pos.x, CHARGE_LASER_WIDTH)
+	_add_shake(0.14, 8.0)
+	_play_sfx("charge_release")
+
+
+func _apply_charged_laser_damage(laser_x: float, laser_width: float) -> void:
+	for enemy in enemies:
+		var enemy_position: Vector2 = enemy["position"]
+		if absf(enemy_position.x - laser_x) <= laser_width * 0.7:
+			enemy["health"] = int(enemy["health"]) - 8
+			if int(enemy["health"]) <= 0:
+				_add_explosion(enemy_position, Color("#8ff6ff"), 42.0)
+				score += 150 + combo * 10
+				combo += 1
+	if boss_active and absf(boss_pos.x - laser_x) <= BOSS_RADIUS + laser_width:
+		boss_health -= 12
+		boss_hit_flash = 0.12
+		score += 50
+		if boss_health <= 0:
+			_defeat_boss()
+
+
+func _update_bomb_input() -> void:
+	if Input.is_action_just_pressed("bomb") and bombs > 0 and game_state == "playing":
+		_use_bomb()
+
+
+func _use_bomb() -> void:
+	bombs -= 1
+	bomb_flash_timer = 0.28
+	enemy_bullets.clear()
+	for enemy in enemies:
+		var enemy_position: Vector2 = enemy["position"]
+		enemy["health"] = 0
+		_add_explosion(enemy_position, Color("#35c7ff"), 52.0)
+	score += enemies.size() * 120
+	combo += enemies.size()
+	if boss_active:
+		boss_health -= 35
+		boss_hit_flash = 0.22
+		_add_explosion(boss_pos, Color("#ff5dff"), 92.0)
+		if boss_health <= 0:
+			_defeat_boss()
+	_add_shake(0.24, 18.0)
+	_play_sfx("bomb")
 
 
 func _update_enemy_spawning(delta: float) -> void:
@@ -245,6 +350,13 @@ func _update_bullets(delta: float) -> void:
 	bullets = bullets.filter(_is_player_bullet_active)
 
 
+func _update_charged_lasers(delta: float) -> void:
+	for laser in charged_lasers:
+		laser["age"] = float(laser["age"]) + delta
+		laser["ttl"] = float(laser["ttl"]) - delta
+	charged_lasers = charged_lasers.filter(func(laser: Dictionary) -> bool: return float(laser["ttl"]) > 0.0)
+
+
 func _update_enemies(delta: float) -> void:
 	for enemy in enemies:
 		var wobble: float = enemy["wobble"] + delta * 3.0
@@ -260,6 +372,13 @@ func _update_enemies(delta: float) -> void:
 			var to_player: Vector2 = (player_pos - enemy_position).normalized()
 			enemy_bullets.append({"position": enemy_position + Vector2(0, 20), "velocity": to_player * 260.0})
 	enemies = enemies.filter(_is_enemy_active)
+
+
+func _update_effects(delta: float) -> void:
+	for effect in effects:
+		effect["age"] = float(effect["age"]) + delta
+		effect["ttl"] = float(effect["ttl"]) - delta
+	effects = effects.filter(func(effect: Dictionary) -> bool: return float(effect["ttl"]) > 0.0)
 
 
 func _start_boss() -> void:
@@ -353,6 +472,7 @@ func _update_collisions() -> void:
 				if int(enemy["health"]) <= 0:
 					score += 100 + combo * 10
 					combo += 1
+					_add_explosion(enemy_position, Color("#ffd166"), 34.0)
 					_play_sfx("enemy_destroy")
 
 	bullets = bullets.filter(_is_player_bullet_active)
@@ -365,6 +485,7 @@ func _update_collisions() -> void:
 		if player_pos.distance_to(enemy_position) <= PLAYER_RADIUS + ENEMY_RADIUS:
 			_damage_player()
 			enemy["health"] = 0
+			_add_explosion(enemy_position, Color("#ff5d78"), 40.0)
 			return
 
 	for enemy_bullet in enemy_bullets:
@@ -378,6 +499,8 @@ func _update_collisions() -> void:
 func _damage_player() -> void:
 	invuln_timer = 2.0
 	combo = 0
+	_add_explosion(player_pos, Color("#ff5d78"), 48.0)
+	_add_shake(0.18, 12.0)
 	_play_sfx("player_hit")
 	if shields > 0:
 		shields -= 1
@@ -398,6 +521,7 @@ func _game_over() -> void:
 	title_label.text = "GAME OVER"
 	subtitle_label.text = "Press Enter or Start to retry"
 	status_label.text = "Score: %d" % score
+	_add_shake(0.3, 16.0)
 	_play_sfx("player_hit")
 
 
@@ -412,6 +536,10 @@ func _level_clear() -> void:
 
 
 func _defeat_boss() -> void:
+	_add_explosion(boss_pos, Color("#ff5dff"), 120.0)
+	_add_explosion(boss_pos + Vector2(-90, 40), Color("#ffd166"), 86.0)
+	_add_explosion(boss_pos + Vector2(90, 42), Color("#8ff6ff"), 86.0)
+	_add_shake(0.5, 22.0)
 	boss_active = false
 	boss_started = false
 	boss_health = 0
@@ -426,7 +554,8 @@ func _update_hud() -> void:
 	var boss_text := ""
 	if boss_started:
 		boss_text = "   BOSS %03d/%03d" % [maxi(boss_health, 0), BOSS_MAX_HEALTH]
-	hud_label.text = "LIVES %d   SHIELD %d   SCORE %06d   COMBO x%d   TIME %02d%s" % [maxi(lives, 0), shields, score, combo, int(stage_time), boss_text]
+	var charge_percent := int((charge_timer / CHARGE_TIME) * 100.0)
+	hud_label.text = "LIVES %d   SHIELD %d   BOMB %d   SCORE %06d   COMBO x%d   CHARGE %03d%%%s" % [maxi(lives, 0), shields, bombs, score, combo, charge_percent, boss_text]
 
 
 func _is_player_bullet_active(bullet: Dictionary) -> bool:
@@ -442,6 +571,22 @@ func _is_enemy_active(enemy: Dictionary) -> bool:
 func _is_enemy_bullet_active(enemy_bullet: Dictionary) -> bool:
 	var bullet_position: Vector2 = enemy_bullet["position"]
 	return PLAYFIELD.grow(60.0).has_point(bullet_position)
+
+
+func _add_explosion(pos: Vector2, color: Color, radius: float) -> void:
+	effects.append({"position": pos, "color": color, "radius": radius, "ttl": 0.34, "age": 0.0})
+
+
+func _add_shake(duration: float, strength: float) -> void:
+	shake_timer = maxf(shake_timer, duration)
+	shake_strength = maxf(shake_strength, strength)
+
+
+func _get_shake_offset() -> Vector2:
+	if shake_timer <= 0.0:
+		shake_strength = 0.0
+		return Vector2.ZERO
+	return Vector2(rng.randf_range(-shake_strength, shake_strength), rng.randf_range(-shake_strength, shake_strength))
 
 
 func _play_sfx(sfx_name: String) -> void:
@@ -470,6 +615,18 @@ func _build_sfx_stream(sfx_name: String) -> AudioStreamWAV:
 			duration = 0.045
 			volume = 0.13
 			waveform = "pulse"
+		"charge_release":
+			frequency = 1400.0
+			end_frequency = 360.0
+			duration = 0.24
+			volume = 0.26
+			waveform = "saw"
+		"bomb":
+			frequency = 95.0
+			end_frequency = 45.0
+			duration = 0.5
+			volume = 0.34
+			waveform = "noise"
 		"enemy_destroy":
 			frequency = 260.0
 			end_frequency = 90.0
@@ -545,9 +702,15 @@ func _ensure_input_map() -> void:
 	_add_key_action("move_up", [KEY_W, KEY_UP])
 	_add_key_action("move_down", [KEY_S, KEY_DOWN])
 	_add_key_action("fire", [KEY_SPACE])
+	_add_key_action("bomb", [KEY_X])
 	_add_key_action("focus", [KEY_SHIFT, KEY_F])
 	_add_key_action("start_game", [KEY_ENTER])
 	_add_key_action("pause_game", [KEY_ESCAPE])
+	_add_joypad_button_action("fire", [JOY_BUTTON_A])
+	_add_joypad_button_action("bomb", [JOY_BUTTON_B])
+	_add_joypad_button_action("focus", [JOY_BUTTON_LEFT_SHOULDER])
+	_add_joypad_button_action("start_game", [JOY_BUTTON_START])
+	_add_joypad_button_action("pause_game", [JOY_BUTTON_START])
 
 
 func _add_key_action(action_name: StringName, keycodes: Array[int]) -> void:
@@ -563,6 +726,21 @@ func _add_key_action(action_name: StringName, keycodes: Array[int]) -> void:
 			var key_event := InputEventKey.new()
 			key_event.keycode = keycode
 			InputMap.action_add_event(action_name, key_event)
+
+
+func _add_joypad_button_action(action_name: StringName, button_ids: Array[int]) -> void:
+	if not InputMap.has_action(action_name):
+		InputMap.add_action(action_name)
+	for button_id in button_ids:
+		var has_button := false
+		for event in InputMap.action_get_events(action_name):
+			if event is InputEventJoypadButton and event.button_index == button_id:
+				has_button = true
+				break
+		if not has_button:
+			var button_event := InputEventJoypadButton.new()
+			button_event.button_index = button_id
+			InputMap.action_add_event(action_name, button_event)
 
 
 func _draw_side_panels() -> void:
@@ -607,6 +785,10 @@ func _draw_player() -> void:
 	var input_x := Input.get_axis("move_left", "move_right")
 	var lean := input_x * 7.0
 	_draw_texture_centered(player_texture, player_pos + Vector2(lean, -8), Vector2(118, 128))
+	if charge_timer >= CHARGE_TIME:
+		draw_arc(player_pos, 42.0 + sin(stage_time * 18.0) * 4.0, 0.0, TAU, 36, Color("#8ff6ff"), 4.0)
+	elif charge_timer > 0.0:
+		draw_arc(player_pos, 30.0, -PI * 0.5, -PI * 0.5 + TAU * (charge_timer / CHARGE_TIME), 24, Color("#35c7ff"), 3.0)
 	draw_circle(player_pos, 5.0, Color(0.9, 1.0, 1.0, 0.85))
 	draw_circle(player_pos + Vector2(0, 2), 8.0, Color("#f7d36b"))
 	draw_circle(player_pos + Vector2(0, 42), 10.0 + sin(stage_time * 18.0) * 2.0, Color("#ff7a33"))
@@ -617,6 +799,8 @@ func _draw_boss() -> void:
 		return
 
 	_draw_texture_centered(boss_texture, boss_pos + Vector2(0, 12), Vector2(330, 305))
+	if boss_hit_flash > 0.0:
+		draw_circle(boss_pos, 104.0, Color(1.0, 1.0, 1.0, boss_hit_flash * 2.8))
 	draw_circle(boss_pos + Vector2(0, 4), 18.0 + sin(boss_weave * 8.0) * 3.0, Color(1.0, 0.35, 0.95, 0.65))
 	draw_arc(boss_pos, BOSS_RADIUS, 0.0, TAU, 32, Color("#ffe6f1"), 3.0)
 
@@ -636,6 +820,30 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	else:
 		_draw_texture_centered(choir_drone_texture, center + Vector2(0, 2), Vector2(78, 70))
 	draw_circle(center, 7.0, Color("#ffd166"))
+
+
+func _draw_charged_laser(laser: Dictionary) -> void:
+	var x: float = laser["x"]
+	var top_y: float = laser["top_y"]
+	var bottom_y: float = laser["bottom_y"]
+	var width: float = laser["width"]
+	var alpha := clampf(float(laser["ttl"]) / CHARGE_LASER_DURATION, 0.0, 1.0)
+	var rect := Rect2(Vector2(x - width * 0.5, top_y), Vector2(width, bottom_y - top_y))
+	draw_rect(rect.grow(14.0), Color(0.1, 0.85, 1.0, 0.16 * alpha))
+	draw_rect(rect, Color(0.65, 0.98, 1.0, 0.55 * alpha))
+	draw_line(Vector2(x, top_y), Vector2(x, bottom_y), Color(1.0, 1.0, 1.0, 0.88 * alpha), 7.0)
+
+
+func _draw_effect(effect: Dictionary) -> void:
+	var effect_position: Vector2 = effect["position"]
+	var effect_color: Color = effect["color"]
+	var radius: float = effect["radius"]
+	var age: float = effect["age"]
+	var ttl: float = effect["ttl"]
+	var progress := clampf(age / (age + ttl), 0.0, 1.0)
+	var alpha := 1.0 - progress
+	draw_circle(effect_position, radius * progress, Color(effect_color.r, effect_color.g, effect_color.b, 0.28 * alpha))
+	draw_arc(effect_position, radius * progress, 0.0, TAU, 36, Color(effect_color.r, effect_color.g, effect_color.b, alpha), 4.0)
 
 
 func _draw_texture_centered(texture: Texture2D, center: Vector2, size: Vector2) -> void:

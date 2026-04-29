@@ -15,6 +15,8 @@ This is the first playable prototype slice. It is not the full first-build miles
 
 - Move: WASD, arrow keys, or left stick.
 - Fire: Space or gamepad A.
+- Charge laser: hold Space until the charge ring completes, then release.
+- Bomb: X.
 - Focus/slow movement: Shift, F, or gamepad left bumper.
 - Start/retry: Enter or Start.
 - Pause: Escape or Start during play.
@@ -32,6 +34,6 @@ This is the first playable prototype slice. It is not the full first-build miles
 
 ## Known Limitations
 
-- No authored/generated sprite sheets yet; this slice uses code-drawn placeholder ships.
+- Generated placeholder sprites are in use, but they are not final art.
 - Procedural SFX are wired directly into the prototype scene; they should move to an `AudioManager` later.
 - GitHub Pages export may still fail until Godot accepts and imports the new main scene in CI.
