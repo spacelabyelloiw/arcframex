@@ -78,12 +78,14 @@ func _draw() -> void:
 	_draw_stars()
 
 	for bullet in bullets:
-		draw_circle(bullet["position"], BULLET_RADIUS, Color("#8ff6ff"))
-		draw_circle(bullet["position"] + Vector2(0, 8), BULLET_RADIUS * 0.5, Color("#f8f0a8"))
+		var bullet_position: Vector2 = bullet["position"]
+		draw_circle(bullet_position, BULLET_RADIUS, Color("#8ff6ff"))
+		draw_circle(bullet_position + Vector2(0, 8), BULLET_RADIUS * 0.5, Color("#f8f0a8"))
 
 	for enemy_bullet in enemy_bullets:
-		draw_circle(enemy_bullet["position"], 8.0, Color("#ff5d78"))
-		draw_arc(enemy_bullet["position"], 13.0, 0.0, TAU, 20, Color("#ffd166"), 2.0)
+		var enemy_bullet_position: Vector2 = enemy_bullet["position"]
+		draw_circle(enemy_bullet_position, 8.0, Color("#ff5d78"))
+		draw_arc(enemy_bullet_position, 13.0, 0.0, TAU, 20, Color("#ffd166"), 2.0)
 
 	for enemy in enemies:
 		_draw_enemy(enemy)
@@ -196,60 +198,67 @@ func _update_enemy_spawning(delta: float) -> void:
 func _update_bullets(delta: float) -> void:
 	for bullet in bullets:
 		var bullet_position: Vector2 = bullet["position"]
-		bullet_position += bullet["velocity"] * delta
+		var bullet_velocity: Vector2 = bullet["velocity"]
+		bullet_position += bullet_velocity * delta
 		bullet["position"] = bullet_position
-	bullets = bullets.filter(func(bullet: Dictionary) -> bool: return bullet["position"].y > PLAYFIELD.position.y - 40.0)
+	bullets = bullets.filter(_is_player_bullet_active)
 
 
 func _update_enemies(delta: float) -> void:
 	for enemy in enemies:
 		var wobble: float = enemy["wobble"] + delta * 3.0
 		var enemy_position: Vector2 = enemy["position"]
-		enemy_position += enemy["velocity"] * delta
+		var enemy_velocity: Vector2 = enemy["velocity"]
+		enemy_position += enemy_velocity * delta
 		enemy_position.x += sin(wobble) * 32.0 * delta
 		enemy["wobble"] = wobble
 		enemy["position"] = enemy_position
 		enemy["fire_timer"] = float(enemy["fire_timer"]) - delta
-		if enemy["fire_timer"] <= 0.0 and PLAYFIELD.has_point(enemy["position"]):
+		if float(enemy["fire_timer"]) <= 0.0 and PLAYFIELD.has_point(enemy_position):
 			enemy["fire_timer"] = ENEMY_BULLET_INTERVAL
-			var to_player := (player_pos - enemy["position"]).normalized()
-			enemy_bullets.append({"position": enemy["position"] + Vector2(0, 20), "velocity": to_player * 260.0})
-	enemies = enemies.filter(func(enemy: Dictionary) -> bool: return enemy["position"].y < PLAYFIELD.end.y + 60.0 and enemy["health"] > 0)
+			var to_player: Vector2 = (player_pos - enemy_position).normalized()
+			enemy_bullets.append({"position": enemy_position + Vector2(0, 20), "velocity": to_player * 260.0})
+	enemies = enemies.filter(_is_enemy_active)
 
 
 func _update_enemy_bullets(delta: float) -> void:
 	for enemy_bullet in enemy_bullets:
 		var bullet_position: Vector2 = enemy_bullet["position"]
-		bullet_position += enemy_bullet["velocity"] * delta
+		var bullet_velocity: Vector2 = enemy_bullet["velocity"]
+		bullet_position += bullet_velocity * delta
 		enemy_bullet["position"] = bullet_position
-	enemy_bullets = enemy_bullets.filter(func(enemy_bullet: Dictionary) -> bool: return PLAYFIELD.grow(60.0).has_point(enemy_bullet["position"]))
+	enemy_bullets = enemy_bullets.filter(_is_enemy_bullet_active)
 
 
 func _update_collisions() -> void:
 	for enemy in enemies:
 		for bullet in bullets:
-			if enemy["position"].distance_to(bullet["position"]) <= ENEMY_RADIUS + BULLET_RADIUS:
+			var enemy_position: Vector2 = enemy["position"]
+			var bullet_position: Vector2 = bullet["position"]
+			if enemy_position.distance_to(bullet_position) <= ENEMY_RADIUS + BULLET_RADIUS:
 				enemy["health"] = int(enemy["health"]) - int(bullet["damage"])
-				bullet["position"] = Vector2(bullet["position"].x, -9999.0)
-				if enemy["health"] <= 0:
+				bullet["position"] = Vector2(bullet_position.x, -9999.0)
+				if int(enemy["health"]) <= 0:
 					score += 100 + combo * 10
 					combo += 1
 
-	bullets = bullets.filter(func(bullet: Dictionary) -> bool: return bullet["position"].y > PLAYFIELD.position.y - 40.0)
+	bullets = bullets.filter(_is_player_bullet_active)
 
 	if invuln_timer > 0.0:
 		return
 
 	for enemy in enemies:
-		if player_pos.distance_to(enemy["position"]) <= PLAYER_RADIUS + ENEMY_RADIUS:
+		var enemy_position: Vector2 = enemy["position"]
+		if player_pos.distance_to(enemy_position) <= PLAYER_RADIUS + ENEMY_RADIUS:
 			_damage_player()
 			enemy["health"] = 0
 			return
 
 	for enemy_bullet in enemy_bullets:
-		if player_pos.distance_to(enemy_bullet["position"]) <= PLAYER_RADIUS + 8.0:
+		var enemy_bullet_position: Vector2 = enemy_bullet["position"]
+		if player_pos.distance_to(enemy_bullet_position) <= PLAYER_RADIUS + 8.0:
 			_damage_player()
-			enemy_bullet["position"] = Vector2(enemy_bullet["position"].x, PLAYFIELD.end.y + 999.0)
+			enemy_bullet["position"] = Vector2(enemy_bullet_position.x, PLAYFIELD.end.y + 999.0)
 			return
 
 
@@ -288,6 +297,21 @@ func _level_clear() -> void:
 
 func _update_hud() -> void:
 	hud_label.text = "LIVES %d   SHIELD %d   SCORE %06d   COMBO x%d   TIME %02d" % [maxi(lives, 0), shields, score, combo, int(stage_time)]
+
+
+func _is_player_bullet_active(bullet: Dictionary) -> bool:
+	var bullet_position: Vector2 = bullet["position"]
+	return bullet_position.y > PLAYFIELD.position.y - 40.0
+
+
+func _is_enemy_active(enemy: Dictionary) -> bool:
+	var enemy_position: Vector2 = enemy["position"]
+	return enemy_position.y < PLAYFIELD.end.y + 60.0 and int(enemy["health"]) > 0
+
+
+func _is_enemy_bullet_active(enemy_bullet: Dictionary) -> bool:
+	var bullet_position: Vector2 = enemy_bullet["position"]
+	return PLAYFIELD.grow(60.0).has_point(bullet_position)
 
 
 func _ensure_input_map() -> void:
@@ -361,7 +385,8 @@ func _draw_player() -> void:
 
 
 func _draw_enemy(enemy: Dictionary) -> void:
-	var color := Color("#ff5d78") if enemy["type"] == "needle_runner" else Color("#b26dff")
+	var enemy_type: String = enemy["type"]
+	var color := Color("#ff5d78") if enemy_type == "needle_runner" else Color("#b26dff")
 	var center: Vector2 = enemy["position"]
 	var body := PackedVector2Array([
 		center + Vector2(0, 28),

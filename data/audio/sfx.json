@@ -12,4 +12,3 @@
   "boss_warning": {"type": "alarm", "frequency": 330, "duration": 0.5, "volume_db": -12},
   "boss_destroy": {"type": "multi_blast", "frequency_start": 180, "frequency_end": 45, "duration": 1.4, "volume_db": -8}
 }
-

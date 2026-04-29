@@ -4,52 +4,51 @@
   "scroll_speed": 90,
   "music": "intro_stage_theme",
   "waves": [
-    {
-      "time": 3.0,
-      "enemy_id": "choir_drone",
-      "count": 5,
-      "spawn_points": ["top_left", "top_center", "top_right"],
-      "path_id": "s_curve_down"
-    },
-    {
-      "time": 18.0,
-      "enemy_id": "pylon_turret",
-      "count": 2,
-      "spawn_points": ["terrain_left", "terrain_right"],
-      "path_id": "stationary"
-    },
-    {
-      "time": 42.0,
-      "enemy_id": "needle_runner",
-      "count": 8,
-      "spawn_points": ["top_left", "top_right"],
-      "path_id": "diagonal_cross"
-    },
-    {
-      "time": 78.0,
-      "enemy_id": "relay_carrier",
-      "count": 1,
-      "spawn_points": ["top_center"],
-      "path_id": "slow_centerline"
-    }
+	{
+	  "time": 3.0,
+	  "enemy_id": "choir_drone",
+	  "count": 5,
+	  "spawn_points": ["top_left", "top_center", "top_right"],
+	  "path_id": "s_curve_down"
+	},
+	{
+	  "time": 18.0,
+	  "enemy_id": "pylon_turret",
+	  "count": 2,
+	  "spawn_points": ["terrain_left", "terrain_right"],
+	  "path_id": "stationary"
+	},
+	{
+	  "time": 42.0,
+	  "enemy_id": "needle_runner",
+	  "count": 8,
+	  "spawn_points": ["top_left", "top_right"],
+	  "path_id": "diagonal_cross"
+	},
+	{
+	  "time": 78.0,
+	  "enemy_id": "relay_carrier",
+	  "count": 1,
+	  "spawn_points": ["top_center"],
+	  "path_id": "slow_centerline"
+	}
   ],
   "hazards": [
-    {
-      "time": 120.0,
-      "id": "sky_arc_warning_beam",
-      "telegraph_time": 1.5
-    }
+	{
+	  "time": 120.0,
+	  "id": "sky_arc_warning_beam",
+	  "telegraph_time": 1.5
+	}
   ],
   "checkpoints": [
-    {
-      "id": "checkpoint_01",
-      "time": 165.0,
-      "player_spawn": "center_bottom"
-    }
+	{
+	  "id": "checkpoint_01",
+	  "time": 165.0,
+	  "player_spawn": "center_bottom"
+	}
   ],
   "boss": {
-    "id": "null_relay_seraph",
-    "trigger_time": 330.0
+	"id": "null_relay_seraph",
+	"trigger_time": 330.0
   }
 }
-
