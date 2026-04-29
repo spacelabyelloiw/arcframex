@@ -125,7 +125,7 @@ func _setup_ui() -> void:
 
 	title_label = _make_label(Vector2(0, 335), Vector2(1920, 86), 64, HORIZONTAL_ALIGNMENT_CENTER)
 	subtitle_label = _make_label(Vector2(0, 432), Vector2(1920, 80), 26, HORIZONTAL_ALIGNMENT_CENTER)
-	hud_label = _make_label(Vector2(35, 32), Vector2(1850, 48), 24, HORIZONTAL_ALIGNMENT_LEFT)
+	hud_label = _make_label(PLAYFIELD.position + Vector2(24, 20), Vector2(PLAYFIELD.size.x - 48, 48), 24, HORIZONTAL_ALIGNMENT_LEFT)
 	status_label = _make_label(Vector2(0, 510), Vector2(1920, 72), 34, HORIZONTAL_ALIGNMENT_CENTER)
 
 	hud_layer.add_child(title_label)
@@ -574,7 +574,6 @@ func _draw_side_panels() -> void:
 
 func _draw_playfield() -> void:
 	_draw_scrolling_background()
-	draw_rect(PLAYFIELD, Color("#7df9ff"), false, 3.0)
 
 
 func _draw_scrolling_background() -> void:
