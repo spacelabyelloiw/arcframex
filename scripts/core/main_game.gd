@@ -574,9 +574,6 @@ func _draw_side_panels() -> void:
 
 func _draw_playfield() -> void:
 	_draw_scrolling_background()
-	for i in range(10):
-		var y := PLAYFIELD.position.y + fmod(stage_time * 70.0 + i * 90.0, PLAYFIELD.size.y)
-		draw_line(Vector2(PLAYFIELD.position.x, y), Vector2(PLAYFIELD.end.x, y), Color(0.1, 0.85, 1.0, 0.18), 1.0)
 	draw_rect(PLAYFIELD, Color("#7df9ff"), false, 3.0)
 
 
@@ -588,7 +585,7 @@ func _draw_scrolling_background() -> void:
 	var bg_height := PLAYFIELD.size.x * float(sky_arc_background_texture.get_height()) / float(sky_arc_background_texture.get_width())
 	var scroll := fmod(stage_time * 88.0, bg_height)
 	var bg_size := Vector2(PLAYFIELD.size.x, bg_height)
-	var first_y := PLAYFIELD.position.y - scroll
+	var first_y := PLAYFIELD.position.y + scroll - bg_height
 	while first_y > PLAYFIELD.position.y:
 		first_y -= bg_height
 	for i in range(3):
