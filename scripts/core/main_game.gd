@@ -16,6 +16,8 @@ const AUDIO_POOL_SIZE := 10
 const CHARGE_TIME := 1.2
 const CHARGE_LASER_DURATION := 0.22
 const CHARGE_LASER_WIDTH := 52.0
+const LEFT_PANEL_WIDTH := 240.0
+const RIGHT_PANEL_WIDTH := 240.0
 
 var player_texture: Texture2D = preload("res://assets/art/player/spr_player_ship_base.png")
 var choir_drone_texture: Texture2D = preload("res://assets/art/enemies/spr_choir_drone.png")
@@ -40,6 +42,7 @@ var was_fire_pressed := false
 var bomb_flash_timer := 0.0
 var shake_timer := 0.0
 var shake_strength := 0.0
+var draw_shake_offset := Vector2.ZERO
 var boss_hit_flash := 0.0
 var boss_started := false
 var boss_active := false
@@ -63,6 +66,7 @@ var status_label: Label
 
 func _ready() -> void:
 	rng.randomize()
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_ensure_input_map()
 	_setup_audio()
 	_setup_ui()
@@ -113,20 +117,18 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), Color("#07101e"))
-	draw_set_transform(_get_shake_offset(), 0.0, Vector2.ONE)
-	_draw_side_panels()
+	draw_shake_offset = _get_shake_offset()
+	draw_set_transform(draw_shake_offset, 0.0, Vector2.ONE)
 	_draw_playfield()
 	_draw_stars()
 
 	for bullet in bullets:
 		var bullet_position: Vector2 = bullet["position"]
-		draw_circle(bullet_position, BULLET_RADIUS, Color("#8ff6ff"))
-		draw_circle(bullet_position + Vector2(0, 8), BULLET_RADIUS * 0.5, Color("#f8f0a8"))
+		_draw_player_bullet(bullet_position)
 
 	for enemy_bullet in enemy_bullets:
 		var enemy_bullet_position: Vector2 = enemy_bullet["position"]
-		draw_circle(enemy_bullet_position, 8.0, Color("#ff5d78"))
-		draw_arc(enemy_bullet_position, 13.0, 0.0, TAU, 20, Color("#ffd166"), 2.0)
+		_draw_enemy_bullet(enemy_bullet_position)
 
 	for laser in charged_lasers:
 		_draw_charged_laser(laser)
@@ -147,7 +149,9 @@ func _draw() -> void:
 		var alpha := minf(bomb_flash_timer * 3.0, 0.32)
 		draw_rect(PLAYFIELD, Color(0.3, 0.9, 1.0, alpha))
 
+	_draw_scanline_overlay()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_draw_side_panels()
 
 
 func _setup_ui() -> void:
@@ -156,7 +160,8 @@ func _setup_ui() -> void:
 
 	title_label = _make_label(Vector2(0, 335), Vector2(1920, 86), 64, HORIZONTAL_ALIGNMENT_CENTER)
 	subtitle_label = _make_label(Vector2(0, 432), Vector2(1920, 80), 26, HORIZONTAL_ALIGNMENT_CENTER)
-	hud_label = _make_label(PLAYFIELD.position + Vector2(24, 20), Vector2(PLAYFIELD.size.x - 48, 48), 24, HORIZONTAL_ALIGNMENT_LEFT)
+	hud_label = _make_label(Vector2.ZERO, Vector2.ZERO, 24, HORIZONTAL_ALIGNMENT_LEFT)
+	hud_label.visible = false
 	status_label = _make_label(Vector2(0, 510), Vector2(1920, 72), 34, HORIZONTAL_ALIGNMENT_CENTER)
 
 	hud_layer.add_child(title_label)
@@ -551,11 +556,7 @@ func _defeat_boss() -> void:
 
 
 func _update_hud() -> void:
-	var boss_text := ""
-	if boss_started:
-		boss_text = "   BOSS %03d/%03d" % [maxi(boss_health, 0), BOSS_MAX_HEALTH]
-	var charge_percent := int((charge_timer / CHARGE_TIME) * 100.0)
-	hud_label.text = "LIVES %d   SHIELD %d   BOMB %d   SCORE %06d   COMBO x%d   CHARGE %03d%%%s" % [maxi(lives, 0), shields, bombs, score, combo, charge_percent, boss_text]
+	hud_label.text = ""
 
 
 func _is_player_bullet_active(bullet: Dictionary) -> bool:
@@ -744,10 +745,128 @@ func _add_joypad_button_action(action_name: StringName, button_ids: Array[int]) 
 
 
 func _draw_side_panels() -> void:
-	draw_rect(Rect2(Vector2(0, 0), Vector2(PLAYFIELD.position.x, 1080)), Color("#111827"))
-	draw_rect(Rect2(Vector2(PLAYFIELD.end.x, 0), Vector2(1920 - PLAYFIELD.end.x, 1080)), Color("#111827"))
-	draw_line(Vector2(PLAYFIELD.position.x, 0), Vector2(PLAYFIELD.position.x, 1080), Color("#35c7ff"), 2.0)
-	draw_line(Vector2(PLAYFIELD.end.x, 0), Vector2(PLAYFIELD.end.x, 1080), Color("#35c7ff"), 2.0)
+	var left_panel := Rect2(Vector2.ZERO, Vector2(LEFT_PANEL_WIDTH, 1080))
+	var right_panel := Rect2(Vector2(PLAYFIELD.end.x, 0), Vector2(RIGHT_PANEL_WIDTH, 1080))
+	draw_rect(left_panel, Color("#03070d"))
+	draw_rect(right_panel, Color("#03070d"))
+	_draw_panel_trim(left_panel, true)
+	_draw_panel_trim(right_panel, false)
+	_draw_left_arcade_hud()
+	_draw_right_arcade_hud()
+
+
+func _draw_panel_trim(panel: Rect2, left_side: bool) -> void:
+	var accent := Color("#007bff")
+	var dim := Color(0.0, 0.45, 0.9, 0.28)
+	var inner_x := panel.end.x - 12.0 if left_side else panel.position.x + 12.0
+	draw_line(Vector2(inner_x, 0), Vector2(inner_x, 1080), dim, 2.0)
+	for i in range(6):
+		var y := 60.0 + float(i) * 165.0
+		var x0 := panel.position.x + 24.0
+		var x1 := panel.end.x - 24.0
+		draw_line(Vector2(x0, y), Vector2(x1, y), Color(0.0, 0.35, 0.75, 0.22), 1.0)
+	if left_side:
+		var points := PackedVector2Array([
+			Vector2(panel.end.x - 2, 0),
+			Vector2(panel.end.x - 2, 680),
+			Vector2(panel.end.x - 42, 720),
+			Vector2(panel.end.x - 42, 900),
+			Vector2(panel.end.x - 2, 942),
+			Vector2(panel.end.x - 2, 1080)
+		])
+		draw_polyline(points, accent, 3.0)
+	else:
+		var points := PackedVector2Array([
+			Vector2(panel.position.x + 2, 0),
+			Vector2(panel.position.x + 2, 680),
+			Vector2(panel.position.x + 42, 720),
+			Vector2(panel.position.x + 42, 900),
+			Vector2(panel.position.x + 2, 942),
+			Vector2(panel.position.x + 2, 1080)
+		])
+		draw_polyline(points, accent, 3.0)
+
+
+func _draw_left_arcade_hud() -> void:
+	_draw_hud_text(Vector2(24, 58), "ARC FRAME X", 28, Color("#eef7ff"))
+	_draw_hud_text(Vector2(24, 134), "SCORE", 25, Color("#008cff"))
+	_draw_hud_text(Vector2(24, 184), "%08d" % score, 38, Color("#eef7ff"))
+	_draw_hud_text(Vector2(24, 276), "CHAIN", 25, Color("#ff9b1f"))
+	_draw_hud_text(Vector2(24, 334), "%03d" % combo, 54, Color("#ffc43b"))
+	_draw_hud_text(Vector2(24, 450), "LIVES", 25, Color("#008cff"))
+	for i in range(maxi(lives, 0)):
+		_draw_mini_ship(Vector2(48 + i * 44, 510))
+	_draw_hud_text(Vector2(24, 802), "BOMB", 25, Color("#008cff"))
+	_draw_hud_text(Vector2(24, 850), "x%02d" % bombs, 32, Color("#eef7ff"))
+	_draw_bomb_icon(Vector2(122, 842))
+	_draw_hud_text(Vector2(24, 954), "SHIELD", 25, Color("#008cff"))
+	_draw_meter(Rect2(Vector2(24, 995), Vector2(192, 28)), float(shields) / 2.0, Color("#35ff8a"), Color("#007bff"))
+
+
+func _draw_right_arcade_hud() -> void:
+	_draw_hud_text(Vector2(1712, 58), "WEAPON", 28, Color("#008cff"))
+	_draw_card(Rect2(Vector2(1710, 108), Vector2(170, 202)), "TWIN\nVULCAN", Color("#35c7ff"))
+	_draw_hud_text(Vector2(1712, 410), "NEXT", 28, Color("#008cff"))
+	_draw_card(Rect2(Vector2(1710, 458), Vector2(170, 202)), "SONIC\nWAVE", Color("#ff9b1f"))
+	_draw_minimap(Rect2(Vector2(1702, 782), Vector2(188, 248)))
+
+
+func _draw_hud_text(pos: Vector2, text: String, size: int, color: Color) -> void:
+	var font := ThemeDB.fallback_font
+	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.75))
+	draw_string(font, pos + Vector2(-2, -2), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+
+
+func _draw_meter(rect: Rect2, value: float, start_color: Color, end_color: Color) -> void:
+	draw_rect(rect.grow(4.0), Color("#021226"))
+	draw_rect(rect.grow(2.0), Color("#5ad7ff"), false, 2.0)
+	var segments := 12
+	for i in range(segments):
+		var t := float(i) / float(segments - 1)
+		var filled := t <= clampf(value, 0.0, 1.0)
+		var x := rect.position.x + 4.0 + float(i) * ((rect.size.x - 8.0) / float(segments))
+		var seg := Rect2(Vector2(x, rect.position.y + 4.0), Vector2(11.0, rect.size.y - 8.0))
+		draw_rect(seg, start_color.lerp(end_color, t) if filled else Color("#09213b"))
+
+
+func _draw_card(rect: Rect2, text: String, color: Color) -> void:
+	draw_rect(rect, Color("#050b14"))
+	draw_rect(rect, Color("#7ccfff"), false, 2.0)
+	_draw_hud_text(rect.position + Vector2(25, 54), text, 25, Color("#eef7ff"))
+	draw_circle(rect.position + Vector2(rect.size.x * 0.5, rect.size.y - 48), 22.0, Color(color.r, color.g, color.b, 0.25))
+	draw_circle(rect.position + Vector2(rect.size.x * 0.5, rect.size.y - 48), 12.0, color)
+
+
+func _draw_minimap(rect: Rect2) -> void:
+	draw_rect(rect, Color("#041124"))
+	draw_rect(rect, Color("#00a5ff"), false, 2.0)
+	for i in range(1, 5):
+		var x := rect.position.x + rect.size.x * float(i) / 5.0
+		draw_line(Vector2(x, rect.position.y), Vector2(x, rect.end.y), Color(0.0, 0.7, 1.0, 0.22), 1.0)
+	for i in range(1, 7):
+		var y := rect.position.y + rect.size.y * float(i) / 7.0
+		draw_line(Vector2(rect.position.x, y), Vector2(rect.end.x, y), Color(0.0, 0.7, 1.0, 0.22), 1.0)
+	var player_y := rect.end.y - 34.0
+	draw_circle(Vector2(rect.position.x + rect.size.x * 0.5, player_y), 8.0, Color("#35c7ff"))
+	if boss_started:
+		draw_circle(Vector2(rect.position.x + rect.size.x * 0.5, rect.position.y + 28.0), 6.0, Color("#ff5d78"))
+
+
+func _draw_mini_ship(pos: Vector2) -> void:
+	var points := PackedVector2Array([
+		pos + Vector2(0, -18),
+		pos + Vector2(14, 15),
+		pos + Vector2(0, 8),
+		pos + Vector2(-14, 15)
+	])
+	draw_colored_polygon(points, Color("#35c7ff"))
+	draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[3], points[0]]), Color("#eef7ff"), 2.0)
+
+
+func _draw_bomb_icon(pos: Vector2) -> void:
+	draw_rect(Rect2(pos, Vector2(46, 46)), Color("#0b3d12"))
+	draw_rect(Rect2(pos, Vector2(46, 46)), Color("#4eff6f"), false, 3.0)
+	_draw_hud_text(pos + Vector2(14, 33), "B", 28, Color("#baff7a"))
 
 
 func _draw_playfield() -> void:
@@ -775,7 +894,7 @@ func _draw_stars() -> void:
 	for i in range(70):
 		var x := PLAYFIELD.position.x + fmod(float(i * 137), PLAYFIELD.size.x)
 		var y := PLAYFIELD.position.y + fmod(float(i * 71) + stage_time * (20.0 + float(i % 4) * 18.0), PLAYFIELD.size.y)
-		draw_circle(Vector2(x, y), 1.5 + float(i % 3), Color(0.55, 0.9, 1.0, 0.35))
+		draw_circle(_pixel_snap(Vector2(x, y)), 1.5 + float(i % 3), Color(0.55, 0.9, 1.0, 0.24))
 
 
 func _draw_player() -> void:
@@ -783,22 +902,23 @@ func _draw_player() -> void:
 		return
 
 	var input_x := Input.get_axis("move_left", "move_right")
-	var lean := input_x * 7.0
-	_draw_texture_centered(player_texture, player_pos + Vector2(lean, -8), Vector2(118, 128))
+	var lean := input_x * 10.0
+	var bob := sin(stage_time * 13.0) * 2.0
+	_draw_texture_centered(player_texture, player_pos + Vector2(lean, -8 + bob), Vector2(118, 128), input_x * 0.08)
 	if charge_timer >= CHARGE_TIME:
 		draw_arc(player_pos, 42.0 + sin(stage_time * 18.0) * 4.0, 0.0, TAU, 36, Color("#8ff6ff"), 4.0)
 	elif charge_timer > 0.0:
 		draw_arc(player_pos, 30.0, -PI * 0.5, -PI * 0.5 + TAU * (charge_timer / CHARGE_TIME), 24, Color("#35c7ff"), 3.0)
 	draw_circle(player_pos, 5.0, Color(0.9, 1.0, 1.0, 0.85))
 	draw_circle(player_pos + Vector2(0, 2), 8.0, Color("#f7d36b"))
-	draw_circle(player_pos + Vector2(0, 42), 10.0 + sin(stage_time * 18.0) * 2.0, Color("#ff7a33"))
+	draw_circle(_pixel_snap(player_pos + Vector2(0, 42)), 10.0 + sin(stage_time * 18.0) * 2.0, Color("#ff7a33"))
 
 
 func _draw_boss() -> void:
 	if not boss_started:
 		return
 
-	_draw_texture_centered(boss_texture, boss_pos + Vector2(0, 12), Vector2(330, 305))
+	_draw_texture_centered(boss_texture, boss_pos + Vector2(0, 12 + sin(boss_weave * 7.0) * 2.0), Vector2(330, 305), sin(boss_weave * 2.0) * 0.025)
 	if boss_hit_flash > 0.0:
 		draw_circle(boss_pos, 104.0, Color(1.0, 1.0, 1.0, boss_hit_flash * 2.8))
 	draw_circle(boss_pos + Vector2(0, 4), 18.0 + sin(boss_weave * 8.0) * 3.0, Color(1.0, 0.35, 0.95, 0.65))
@@ -815,11 +935,26 @@ func _draw_boss() -> void:
 func _draw_enemy(enemy: Dictionary) -> void:
 	var enemy_type: String = enemy["type"]
 	var center: Vector2 = enemy["position"]
+	var wobble: float = enemy["wobble"]
 	if enemy_type == "needle_runner":
-		_draw_texture_centered(needle_runner_texture, center + Vector2(0, 2), Vector2(78, 78))
+		_draw_texture_centered(needle_runner_texture, center + Vector2(0, 2), Vector2(78, 78), sin(wobble) * 0.08)
 	else:
-		_draw_texture_centered(choir_drone_texture, center + Vector2(0, 2), Vector2(78, 70))
-	draw_circle(center, 7.0, Color("#ffd166"))
+		_draw_texture_centered(choir_drone_texture, center + Vector2(0, 2 + sin(wobble * 1.7) * 2.0), Vector2(78, 70), sin(wobble) * 0.05)
+	draw_circle(_pixel_snap(center), 7.0, Color("#ffd166"))
+
+
+func _draw_player_bullet(pos: Vector2) -> void:
+	var snapped := _pixel_snap(pos)
+	draw_rect(Rect2(snapped + Vector2(-6, -20), Vector2(12, 38)), Color(0.0, 0.45, 1.0, 0.22))
+	draw_rect(Rect2(snapped + Vector2(-3, -18), Vector2(6, 34)), Color("#00a5ff"))
+	draw_rect(Rect2(snapped + Vector2(-1, -16), Vector2(2, 30)), Color("#e8f7ff"))
+
+
+func _draw_enemy_bullet(pos: Vector2) -> void:
+	var snapped := _pixel_snap(pos)
+	draw_circle(snapped, 10.0, Color("#ff2f80"))
+	draw_circle(snapped, 5.0, Color("#ffd166"))
+	draw_arc(snapped, 15.0, 0.0, TAU, 16, Color(1.0, 0.2, 0.55, 0.65), 3.0)
 
 
 func _draw_charged_laser(laser: Dictionary) -> void:
@@ -846,7 +981,20 @@ func _draw_effect(effect: Dictionary) -> void:
 	draw_arc(effect_position, radius * progress, 0.0, TAU, 36, Color(effect_color.r, effect_color.g, effect_color.b, alpha), 4.0)
 
 
-func _draw_texture_centered(texture: Texture2D, center: Vector2, size: Vector2) -> void:
+func _draw_texture_centered(texture: Texture2D, center: Vector2, size: Vector2, rotation := 0.0) -> void:
 	if texture == null:
 		return
-	draw_texture_rect(texture, Rect2(center - size * 0.5, size), false)
+	var snapped := _pixel_snap(center)
+	draw_set_transform(snapped + draw_shake_offset, rotation, Vector2.ONE)
+	draw_texture_rect(texture, Rect2(-size * 0.5, size), false)
+	draw_set_transform(draw_shake_offset, 0.0, Vector2.ONE)
+
+
+func _pixel_snap(pos: Vector2) -> Vector2:
+	return Vector2(roundf(pos.x / 2.0) * 2.0, roundf(pos.y / 2.0) * 2.0)
+
+
+func _draw_scanline_overlay() -> void:
+	for y in range(0, 1080, 4):
+		draw_rect(Rect2(Vector2(PLAYFIELD.position.x, float(y)), Vector2(PLAYFIELD.size.x, 1.0)), Color(0.0, 0.0, 0.0, 0.16))
+	draw_rect(PLAYFIELD, Color(0.0, 0.08, 0.18, 0.08))
