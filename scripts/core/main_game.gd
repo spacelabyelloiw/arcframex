@@ -12,12 +12,9 @@ const ENEMY_BULLET_INTERVAL := 1.4
 const BOSS_TRIGGER_TIME := 45.0
 const BOSS_MAX_HEALTH := 220
 const BOSS_RADIUS := 62.0
-const AUDIO_POOL_SIZE := 10
 const CHARGE_TIME := 1.2
 const CHARGE_LASER_DURATION := 0.22
 const CHARGE_LASER_WIDTH := 52.0
-const LEFT_PANEL_WIDTH := 240.0
-const RIGHT_PANEL_WIDTH := 240.0
 
 var player_texture: Texture2D = preload("res://assets/art/player/spr_player_ship_base.png")
 var choir_drone_texture: Texture2D = preload("res://assets/art/enemies/spr_choir_drone.png")
@@ -56,8 +53,9 @@ var enemies: Array[Dictionary] = []
 var enemy_bullets: Array[Dictionary] = []
 var charged_lasers: Array[Dictionary] = []
 var effects: Array[Dictionary] = []
-var audio_players: Array[AudioStreamPlayer] = []
 var rng := RandomNumberGenerator.new()
+var audio_manager: AudioManager
+var hud_renderer := HudRenderer.new()
 var hud_layer: CanvasLayer
 var title_label: Label
 var subtitle_label: Label
@@ -172,11 +170,8 @@ func _setup_ui() -> void:
 
 
 func _setup_audio() -> void:
-	for i in range(AUDIO_POOL_SIZE):
-		var player := AudioStreamPlayer.new()
-		player.bus = "Master"
-		add_child(player)
-		audio_players.append(player)
+	audio_manager = AudioManager.new()
+	add_child(audio_manager)
 
 
 func _make_label(pos: Vector2, size: Vector2, font_size: int, align: HorizontalAlignment) -> Label:
@@ -591,110 +586,8 @@ func _get_shake_offset() -> Vector2:
 
 
 func _play_sfx(sfx_name: String) -> void:
-	var stream := _build_sfx_stream(sfx_name)
-	for player in audio_players:
-		if not player.playing:
-			player.stream = stream
-			player.play()
-			return
-
-	audio_players[0].stream = stream
-	audio_players[0].play()
-
-
-func _build_sfx_stream(sfx_name: String) -> AudioStreamWAV:
-	var frequency := 520.0
-	var duration := 0.08
-	var volume := 0.22
-	var waveform := "sine"
-	var end_frequency := frequency
-
-	match sfx_name:
-		"player_shot":
-			frequency = 980.0
-			end_frequency = 760.0
-			duration = 0.045
-			volume = 0.13
-			waveform = "pulse"
-		"charge_release":
-			frequency = 1400.0
-			end_frequency = 360.0
-			duration = 0.24
-			volume = 0.26
-			waveform = "saw"
-		"bomb":
-			frequency = 95.0
-			end_frequency = 45.0
-			duration = 0.5
-			volume = 0.34
-			waveform = "noise"
-		"enemy_destroy":
-			frequency = 260.0
-			end_frequency = 90.0
-			duration = 0.16
-			volume = 0.22
-			waveform = "noise"
-		"player_hit":
-			frequency = 190.0
-			end_frequency = 70.0
-			duration = 0.22
-			volume = 0.28
-			waveform = "saw"
-		"boss_warning":
-			frequency = 330.0
-			end_frequency = 330.0
-			duration = 0.55
-			volume = 0.2
-			waveform = "alarm"
-		"pickup":
-			frequency = 660.0
-			end_frequency = 1320.0
-			duration = 0.28
-			volume = 0.24
-			waveform = "sine"
-
-	return _make_wav(frequency, end_frequency, duration, volume, waveform)
-
-
-func _make_wav(frequency: float, end_frequency: float, duration: float, volume: float, waveform: String) -> AudioStreamWAV:
-	var mix_rate := 22050
-	var sample_count := int(duration * float(mix_rate))
-	var bytes := PackedByteArray()
-	bytes.resize(sample_count * 2)
-
-	for i in range(sample_count):
-		var t := float(i) / float(mix_rate)
-		var progress := float(i) / float(maxi(sample_count - 1, 1))
-		var current_frequency := lerpf(frequency, end_frequency, progress)
-		var envelope := sin(progress * PI)
-		var sample := _sample_wave(waveform, current_frequency, t, progress) * envelope * volume
-		var int_sample := int(clampf(sample, -1.0, 1.0) * 32767.0)
-		if int_sample < 0:
-			int_sample = 65536 + int_sample
-		bytes[i * 2] = int_sample & 0xff
-		bytes[i * 2 + 1] = (int_sample >> 8) & 0xff
-
-	var stream := AudioStreamWAV.new()
-	stream.format = AudioStreamWAV.FORMAT_16_BITS
-	stream.mix_rate = mix_rate
-	stream.stereo = false
-	stream.data = bytes
-	return stream
-
-
-func _sample_wave(waveform: String, frequency: float, t: float, progress: float) -> float:
-	match waveform:
-		"pulse":
-			return 1.0 if sin(TAU * frequency * t) >= 0.0 else -1.0
-		"saw":
-			return 2.0 * fmod(frequency * t, 1.0) - 1.0
-		"noise":
-			return rng.randf_range(-1.0, 1.0) * (1.0 - progress * 0.35)
-		"alarm":
-			var gate := 1.0 if int(progress * 12.0) % 2 == 0 else 0.35
-			return sin(TAU * frequency * t) * gate
-		_:
-			return sin(TAU * frequency * t)
+	if audio_manager != null:
+		audio_manager.play_sfx(sfx_name)
 
 
 func _ensure_input_map() -> void:
@@ -745,128 +638,15 @@ func _add_joypad_button_action(action_name: StringName, button_ids: Array[int]) 
 
 
 func _draw_side_panels() -> void:
-	var left_panel := Rect2(Vector2.ZERO, Vector2(LEFT_PANEL_WIDTH, 1080))
-	var right_panel := Rect2(Vector2(PLAYFIELD.end.x, 0), Vector2(RIGHT_PANEL_WIDTH, 1080))
-	draw_rect(left_panel, Color("#03070d"))
-	draw_rect(right_panel, Color("#03070d"))
-	_draw_panel_trim(left_panel, true)
-	_draw_panel_trim(right_panel, false)
-	_draw_left_arcade_hud()
-	_draw_right_arcade_hud()
-
-
-func _draw_panel_trim(panel: Rect2, left_side: bool) -> void:
-	var accent := Color("#007bff")
-	var dim := Color(0.0, 0.45, 0.9, 0.28)
-	var inner_x := panel.end.x - 12.0 if left_side else panel.position.x + 12.0
-	draw_line(Vector2(inner_x, 0), Vector2(inner_x, 1080), dim, 2.0)
-	for i in range(6):
-		var y := 60.0 + float(i) * 165.0
-		var x0 := panel.position.x + 24.0
-		var x1 := panel.end.x - 24.0
-		draw_line(Vector2(x0, y), Vector2(x1, y), Color(0.0, 0.35, 0.75, 0.22), 1.0)
-	if left_side:
-		var points := PackedVector2Array([
-			Vector2(panel.end.x - 2, 0),
-			Vector2(panel.end.x - 2, 680),
-			Vector2(panel.end.x - 42, 720),
-			Vector2(panel.end.x - 42, 900),
-			Vector2(panel.end.x - 2, 942),
-			Vector2(panel.end.x - 2, 1080)
-		])
-		draw_polyline(points, accent, 3.0)
-	else:
-		var points := PackedVector2Array([
-			Vector2(panel.position.x + 2, 0),
-			Vector2(panel.position.x + 2, 680),
-			Vector2(panel.position.x + 42, 720),
-			Vector2(panel.position.x + 42, 900),
-			Vector2(panel.position.x + 2, 942),
-			Vector2(panel.position.x + 2, 1080)
-		])
-		draw_polyline(points, accent, 3.0)
-
-
-func _draw_left_arcade_hud() -> void:
-	_draw_hud_text(Vector2(24, 58), "ARC FRAME X", 28, Color("#eef7ff"))
-	_draw_hud_text(Vector2(24, 134), "SCORE", 25, Color("#008cff"))
-	_draw_hud_text(Vector2(24, 184), "%08d" % score, 38, Color("#eef7ff"))
-	_draw_hud_text(Vector2(24, 276), "CHAIN", 25, Color("#ff9b1f"))
-	_draw_hud_text(Vector2(24, 334), "%03d" % combo, 54, Color("#ffc43b"))
-	_draw_hud_text(Vector2(24, 450), "LIVES", 25, Color("#008cff"))
-	for i in range(maxi(lives, 0)):
-		_draw_mini_ship(Vector2(48 + i * 44, 510))
-	_draw_hud_text(Vector2(24, 802), "BOMB", 25, Color("#008cff"))
-	_draw_hud_text(Vector2(24, 850), "x%02d" % bombs, 32, Color("#eef7ff"))
-	_draw_bomb_icon(Vector2(122, 842))
-	_draw_hud_text(Vector2(24, 954), "SHIELD", 25, Color("#008cff"))
-	_draw_meter(Rect2(Vector2(24, 995), Vector2(192, 28)), float(shields) / 2.0, Color("#35ff8a"), Color("#007bff"))
-
-
-func _draw_right_arcade_hud() -> void:
-	_draw_hud_text(Vector2(1712, 58), "WEAPON", 28, Color("#008cff"))
-	_draw_card(Rect2(Vector2(1710, 108), Vector2(170, 202)), "TWIN\nVULCAN", Color("#35c7ff"))
-	_draw_hud_text(Vector2(1712, 410), "NEXT", 28, Color("#008cff"))
-	_draw_card(Rect2(Vector2(1710, 458), Vector2(170, 202)), "SONIC\nWAVE", Color("#ff9b1f"))
-	_draw_minimap(Rect2(Vector2(1702, 782), Vector2(188, 248)))
-
-
-func _draw_hud_text(pos: Vector2, text: String, size: int, color: Color) -> void:
-	var font := ThemeDB.fallback_font
-	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.75))
-	draw_string(font, pos + Vector2(-2, -2), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
-
-
-func _draw_meter(rect: Rect2, value: float, start_color: Color, end_color: Color) -> void:
-	draw_rect(rect.grow(4.0), Color("#021226"))
-	draw_rect(rect.grow(2.0), Color("#5ad7ff"), false, 2.0)
-	var segments := 12
-	for i in range(segments):
-		var t := float(i) / float(segments - 1)
-		var filled := t <= clampf(value, 0.0, 1.0)
-		var x := rect.position.x + 4.0 + float(i) * ((rect.size.x - 8.0) / float(segments))
-		var seg := Rect2(Vector2(x, rect.position.y + 4.0), Vector2(11.0, rect.size.y - 8.0))
-		draw_rect(seg, start_color.lerp(end_color, t) if filled else Color("#09213b"))
-
-
-func _draw_card(rect: Rect2, text: String, color: Color) -> void:
-	draw_rect(rect, Color("#050b14"))
-	draw_rect(rect, Color("#7ccfff"), false, 2.0)
-	_draw_hud_text(rect.position + Vector2(25, 54), text, 25, Color("#eef7ff"))
-	draw_circle(rect.position + Vector2(rect.size.x * 0.5, rect.size.y - 48), 22.0, Color(color.r, color.g, color.b, 0.25))
-	draw_circle(rect.position + Vector2(rect.size.x * 0.5, rect.size.y - 48), 12.0, color)
-
-
-func _draw_minimap(rect: Rect2) -> void:
-	draw_rect(rect, Color("#041124"))
-	draw_rect(rect, Color("#00a5ff"), false, 2.0)
-	for i in range(1, 5):
-		var x := rect.position.x + rect.size.x * float(i) / 5.0
-		draw_line(Vector2(x, rect.position.y), Vector2(x, rect.end.y), Color(0.0, 0.7, 1.0, 0.22), 1.0)
-	for i in range(1, 7):
-		var y := rect.position.y + rect.size.y * float(i) / 7.0
-		draw_line(Vector2(rect.position.x, y), Vector2(rect.end.x, y), Color(0.0, 0.7, 1.0, 0.22), 1.0)
-	var player_y := rect.end.y - 34.0
-	draw_circle(Vector2(rect.position.x + rect.size.x * 0.5, player_y), 8.0, Color("#35c7ff"))
-	if boss_started:
-		draw_circle(Vector2(rect.position.x + rect.size.x * 0.5, rect.position.y + 28.0), 6.0, Color("#ff5d78"))
-
-
-func _draw_mini_ship(pos: Vector2) -> void:
-	var points := PackedVector2Array([
-		pos + Vector2(0, -18),
-		pos + Vector2(14, 15),
-		pos + Vector2(0, 8),
-		pos + Vector2(-14, 15)
-	])
-	draw_colored_polygon(points, Color("#35c7ff"))
-	draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[3], points[0]]), Color("#eef7ff"), 2.0)
-
-
-func _draw_bomb_icon(pos: Vector2) -> void:
-	draw_rect(Rect2(pos, Vector2(46, 46)), Color("#0b3d12"))
-	draw_rect(Rect2(pos, Vector2(46, 46)), Color("#4eff6f"), false, 3.0)
-	_draw_hud_text(pos + Vector2(14, 33), "B", 28, Color("#baff7a"))
+	hud_renderer.draw(self, {
+		"playfield": PLAYFIELD,
+		"score": score,
+		"combo": combo,
+		"lives": lives,
+		"bombs": bombs,
+		"shields": shields,
+		"boss_started": boss_started
+	})
 
 
 func _draw_playfield() -> void:

@@ -26,6 +26,12 @@
 - `data`: JSON tuning and content.
 - `assets`: generated and authored assets only; do not commit export output.
 
+## Current Refactor Status
+
+- `scripts/managers/audio_manager.gd` owns procedural SFX generation and pooled playback.
+- `scripts/ui/hud_renderer.gd` owns the current side-panel HUD drawing.
+- `scripts/core/main_game.gd` still owns player, bullet, enemy, boss, collision, and most rendering logic. Continue extracting these in small playable slices.
+
 ## Bot Working Rules
 
 - Before changing gameplay, check the relevant data file and schema.
@@ -46,4 +52,3 @@ git add .
 git commit -m "Scaffold Arc Frame X Godot project"
 git push -u origin main
 ```
-
