@@ -4,9 +4,6 @@ const PLAYFIELD := Rect2(Vector2(240, 0), Vector2(1440, 1080))
 const PLAYER_RADIUS := 18.0
 const ENEMY_RADIUS := 22.0
 const BULLET_RADIUS := 6.0
-const PLAYER_SPEED := 420.0
-const FOCUS_SPEED := 230.0
-const FIRE_INTERVAL := 0.11
 const ENEMY_SPAWN_INTERVAL := 0.9
 const ENEMY_BULLET_INTERVAL := 1.4
 const BOSS_TRIGGER_TIME := 45.0
@@ -23,21 +20,14 @@ var boss_texture: Texture2D = preload("res://assets/art/bosses/spr_null_relay_se
 var sky_arc_background_texture: Texture2D = preload("res://assets/art/backgrounds/bg_sky_arc_breach.png")
 var audio_manager_script: Script = preload("res://scripts/managers/audio_manager.gd")
 var hud_renderer_script: Script = preload("res://scripts/ui/hud_renderer.gd")
+var player_controller_script: Script = preload("res://scripts/player/player_controller.gd")
 
 var game_state := "title"
-var player_pos := Vector2.ZERO
-var player_fire_timer := 0.0
 var spawn_timer := 0.0
 var stage_time := 0.0
 var score := 0
 var combo := 0
-var lives := 3
-var shields := 1
-var bombs := 3
-var invuln_timer := 0.0
 var paused := false
-var charge_timer := 0.0
-var was_fire_pressed := false
 var bomb_flash_timer := 0.0
 var shake_timer := 0.0
 var shake_strength := 0.0
@@ -56,8 +46,9 @@ var enemy_bullets: Array[Dictionary] = []
 var charged_lasers: Array[Dictionary] = []
 var effects: Array[Dictionary] = []
 var rng := RandomNumberGenerator.new()
-var audio_manager: Node
-var hud_renderer: RefCounted
+var audio_manager
+var hud_renderer
+var player_controller
 var hud_layer: CanvasLayer
 var title_label: Label
 var subtitle_label: Label
@@ -68,6 +59,7 @@ func _ready() -> void:
 	rng.randomize()
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	hud_renderer = hud_renderer_script.new()
+	player_controller = player_controller_script.new()
 	_ensure_input_map()
 	_setup_audio()
 	_setup_ui()
@@ -91,13 +83,11 @@ func _process(delta: float) -> void:
 		return
 
 	stage_time += delta
-	invuln_timer = maxf(invuln_timer - delta, 0.0)
 	bomb_flash_timer = maxf(bomb_flash_timer - delta, 0.0)
 	shake_timer = maxf(shake_timer - delta, 0.0)
 	boss_hit_flash = maxf(boss_hit_flash - delta, 0.0)
-	_update_player(delta)
-	_update_player_fire(delta)
-	_update_bomb_input()
+	var player_events: Dictionary = player_controller.update(delta, PLAYFIELD, PLAYER_RADIUS, true)
+	_apply_player_events(player_events)
 	if boss_started:
 		_update_boss(delta)
 	else:
@@ -211,19 +201,12 @@ func _start_game() -> void:
 
 
 func _reset_run() -> void:
-	player_pos = PLAYFIELD.position + Vector2(PLAYFIELD.size.x * 0.5, PLAYFIELD.size.y - 92.0)
-	player_fire_timer = 0.0
+	player_controller.reset(PLAYFIELD)
 	spawn_timer = 0.0
 	stage_time = 0.0
 	score = 0
 	combo = 0
-	lives = 3
-	shields = 1
-	bombs = 3
-	invuln_timer = 0.0
 	paused = false
-	charge_timer = 0.0
-	was_fire_pressed = false
 	bomb_flash_timer = 0.0
 	shake_timer = 0.0
 	shake_strength = 0.0
@@ -242,33 +225,20 @@ func _reset_run() -> void:
 	effects.clear()
 
 
-func _update_player(delta: float) -> void:
-	var input_vector := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	var speed := FOCUS_SPEED if Input.is_action_pressed("focus") else PLAYER_SPEED
-	player_pos += input_vector * speed * delta
-	player_pos.x = clampf(player_pos.x, PLAYFIELD.position.x + PLAYER_RADIUS, PLAYFIELD.end.x - PLAYER_RADIUS)
-	player_pos.y = clampf(player_pos.y, PLAYFIELD.position.y + PLAYER_RADIUS, PLAYFIELD.end.y - PLAYER_RADIUS)
-
-
-func _update_player_fire(delta: float) -> void:
-	player_fire_timer -= delta
-	var fire_pressed := Input.is_action_pressed("fire")
-	if fire_pressed:
-		charge_timer = minf(charge_timer + delta, CHARGE_TIME)
-	else:
-		if was_fire_pressed and charge_timer >= CHARGE_TIME:
-			_fire_charged_laser()
-		charge_timer = 0.0
-
-	if fire_pressed and player_fire_timer <= 0.0:
-		player_fire_timer = FIRE_INTERVAL
-		bullets.append({"position": player_pos + Vector2(-10, -24), "velocity": Vector2(0, -900), "damage": 1})
-		bullets.append({"position": player_pos + Vector2(10, -24), "velocity": Vector2(0, -900), "damage": 1})
+func _apply_player_events(player_events: Dictionary) -> void:
+	var shots: Array = player_events["shots"]
+	for shot in shots:
+		bullets.append(shot)
+	if not shots.is_empty():
 		_play_sfx("player_shot")
-	was_fire_pressed = fire_pressed
+	if bool(player_events["charge_released"]):
+		_fire_charged_laser()
+	if bool(player_events["bomb_requested"]):
+		_use_bomb()
 
 
 func _fire_charged_laser() -> void:
+	var player_pos: Vector2 = player_controller.position
 	charged_lasers.append({
 		"x": player_pos.x,
 		"top_y": PLAYFIELD.position.y,
@@ -299,13 +269,9 @@ func _apply_charged_laser_damage(laser_x: float, laser_width: float) -> void:
 			_defeat_boss()
 
 
-func _update_bomb_input() -> void:
-	if Input.is_action_just_pressed("bomb") and bombs > 0 and game_state == "playing":
-		_use_bomb()
-
-
 func _use_bomb() -> void:
-	bombs -= 1
+	if not player_controller.consume_bomb():
+		return
 	bomb_flash_timer = 0.28
 	enemy_bullets.clear()
 	for enemy in enemies:
@@ -372,7 +338,7 @@ func _update_enemies(delta: float) -> void:
 		enemy["fire_timer"] = float(enemy["fire_timer"]) - delta
 		if float(enemy["fire_timer"]) <= 0.0 and PLAYFIELD.has_point(enemy_position):
 			enemy["fire_timer"] = ENEMY_BULLET_INTERVAL
-			var to_player: Vector2 = (player_pos - enemy_position).normalized()
+			var to_player: Vector2 = (player_controller.position - enemy_position).normalized()
 			enemy_bullets.append({"position": enemy_position + Vector2(0, 20), "velocity": to_player * 260.0})
 	enemies = enemies.filter(_is_enemy_active)
 
@@ -439,7 +405,7 @@ func _fire_boss_spread(count: int, speed: float, arc_width: float) -> void:
 
 
 func _fire_aimed_boss_shot(speed: float) -> void:
-	var to_player: Vector2 = (player_pos - boss_pos).normalized()
+	var to_player: Vector2 = (player_controller.position - boss_pos).normalized()
 	enemy_bullets.append({"position": boss_pos + Vector2(-28, 30), "velocity": to_player.rotated(-0.1) * speed})
 	enemy_bullets.append({"position": boss_pos + Vector2(28, 30), "velocity": to_player.rotated(0.1) * speed})
 
@@ -480,12 +446,12 @@ func _update_collisions() -> void:
 
 	bullets = bullets.filter(_is_player_bullet_active)
 
-	if invuln_timer > 0.0:
+	if player_controller.invuln_timer > 0.0:
 		return
 
 	for enemy in enemies:
 		var enemy_position: Vector2 = enemy["position"]
-		if player_pos.distance_to(enemy_position) <= PLAYER_RADIUS + ENEMY_RADIUS:
+		if player_controller.position.distance_to(enemy_position) <= PLAYER_RADIUS + ENEMY_RADIUS:
 			_damage_player()
 			enemy["health"] = 0
 			_add_explosion(enemy_position, Color("#ff5d78"), 40.0)
@@ -493,30 +459,24 @@ func _update_collisions() -> void:
 
 	for enemy_bullet in enemy_bullets:
 		var enemy_bullet_position: Vector2 = enemy_bullet["position"]
-		if player_pos.distance_to(enemy_bullet_position) <= PLAYER_RADIUS + 8.0:
+		if player_controller.position.distance_to(enemy_bullet_position) <= PLAYER_RADIUS + 8.0:
 			_damage_player()
 			enemy_bullet["position"] = Vector2(enemy_bullet_position.x, PLAYFIELD.end.y + 999.0)
 			return
 
 
 func _damage_player() -> void:
-	invuln_timer = 2.0
 	combo = 0
-	_add_explosion(player_pos, Color("#ff5d78"), 48.0)
+	_add_explosion(player_controller.position, Color("#ff5d78"), 48.0)
 	_add_shake(0.18, 12.0)
 	_play_sfx("player_hit")
-	if shields > 0:
-		shields -= 1
-		return
-
-	lives -= 1
-	if lives <= 0:
+	var damage_result: Dictionary = player_controller.damage(PLAYFIELD)
+	if bool(damage_result["game_over"]):
 		_game_over()
 		return
 
-	shields = 1
-	player_pos = PLAYFIELD.position + Vector2(PLAYFIELD.size.x * 0.5, PLAYFIELD.size.y - 92.0)
-	enemy_bullets.clear()
+	if bool(damage_result["respawned"]):
+		enemy_bullets.clear()
 
 
 func _game_over() -> void:
@@ -645,9 +605,9 @@ func _draw_side_panels() -> void:
 		"playfield": PLAYFIELD,
 		"score": score,
 		"combo": combo,
-		"lives": lives,
-		"bombs": bombs,
-		"shields": shields,
+		"lives": player_controller.lives,
+		"bombs": player_controller.bombs,
+		"shields": player_controller.shields,
 		"boss_started": boss_started
 	})
 
@@ -681,12 +641,14 @@ func _draw_stars() -> void:
 
 
 func _draw_player() -> void:
-	if invuln_timer > 0.0 and int(invuln_timer * 12.0) % 2 == 0:
+	if player_controller.invuln_timer > 0.0 and int(player_controller.invuln_timer * 12.0) % 2 == 0:
 		return
 
 	var input_x := Input.get_axis("move_left", "move_right")
 	var lean := input_x * 10.0
 	var bob := sin(stage_time * 13.0) * 2.0
+	var player_pos: Vector2 = player_controller.position
+	var charge_timer: float = player_controller.charge_timer
 	_draw_texture_centered(player_texture, player_pos + Vector2(lean, -8 + bob), Vector2(118, 128), input_x * 0.08)
 	if charge_timer >= CHARGE_TIME:
 		draw_arc(player_pos, 42.0 + sin(stage_time * 18.0) * 4.0, 0.0, TAU, 36, Color("#8ff6ff"), 4.0)
