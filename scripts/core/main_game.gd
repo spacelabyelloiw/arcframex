@@ -21,6 +21,8 @@ var choir_drone_texture: Texture2D = preload("res://assets/art/enemies/spr_choir
 var needle_runner_texture: Texture2D = preload("res://assets/art/enemies/spr_needle_runner.png")
 var boss_texture: Texture2D = preload("res://assets/art/bosses/spr_null_relay_seraph.png")
 var sky_arc_background_texture: Texture2D = preload("res://assets/art/backgrounds/bg_sky_arc_breach.png")
+var audio_manager_script: Script = preload("res://scripts/managers/audio_manager.gd")
+var hud_renderer_script: Script = preload("res://scripts/ui/hud_renderer.gd")
 
 var game_state := "title"
 var player_pos := Vector2.ZERO
@@ -54,8 +56,8 @@ var enemy_bullets: Array[Dictionary] = []
 var charged_lasers: Array[Dictionary] = []
 var effects: Array[Dictionary] = []
 var rng := RandomNumberGenerator.new()
-var audio_manager: AudioManager
-var hud_renderer := HudRenderer.new()
+var audio_manager: Node
+var hud_renderer: RefCounted
 var hud_layer: CanvasLayer
 var title_label: Label
 var subtitle_label: Label
@@ -65,6 +67,7 @@ var status_label: Label
 func _ready() -> void:
 	rng.randomize()
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	hud_renderer = hud_renderer_script.new()
 	_ensure_input_map()
 	_setup_audio()
 	_setup_ui()
@@ -170,7 +173,7 @@ func _setup_ui() -> void:
 
 
 func _setup_audio() -> void:
-	audio_manager = AudioManager.new()
+	audio_manager = audio_manager_script.new()
 	add_child(audio_manager)
 
 
