@@ -21,6 +21,7 @@ var sky_arc_background_texture: Texture2D = preload("res://assets/art/background
 var audio_manager_script: Script = preload("res://scripts/managers/audio_manager.gd")
 var hud_renderer_script: Script = preload("res://scripts/ui/hud_renderer.gd")
 var player_controller_script: Script = preload("res://scripts/player/player_controller.gd")
+var bullet_manager_script: Script = preload("res://scripts/bullets/bullet_manager.gd")
 
 var game_state := "title"
 var spawn_timer := 0.0
@@ -40,15 +41,13 @@ var boss_pos := Vector2.ZERO
 var boss_health := BOSS_MAX_HEALTH
 var boss_fire_timer := 0.0
 var boss_weave := 0.0
-var bullets: Array[Dictionary] = []
 var enemies: Array[Dictionary] = []
-var enemy_bullets: Array[Dictionary] = []
-var charged_lasers: Array[Dictionary] = []
 var effects: Array[Dictionary] = []
 var rng := RandomNumberGenerator.new()
 var audio_manager
 var hud_renderer
 var player_controller
+var bullet_manager
 var hud_layer: CanvasLayer
 var title_label: Label
 var subtitle_label: Label
@@ -60,6 +59,7 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	hud_renderer = hud_renderer_script.new()
 	player_controller = player_controller_script.new()
+	bullet_manager = bullet_manager_script.new()
 	_ensure_input_map()
 	_setup_audio()
 	_setup_ui()
@@ -92,10 +92,8 @@ func _process(delta: float) -> void:
 		_update_boss(delta)
 	else:
 		_update_enemy_spawning(delta)
-	_update_bullets(delta)
-	_update_charged_lasers(delta)
+	bullet_manager.update(delta, PLAYFIELD)
 	_update_enemies(delta)
-	_update_enemy_bullets(delta)
 	_update_effects(delta)
 	_update_collisions()
 	_update_hud()
@@ -113,16 +111,7 @@ func _draw() -> void:
 	_draw_playfield()
 	_draw_stars()
 
-	for bullet in bullets:
-		var bullet_position: Vector2 = bullet["position"]
-		_draw_player_bullet(bullet_position)
-
-	for enemy_bullet in enemy_bullets:
-		var enemy_bullet_position: Vector2 = enemy_bullet["position"]
-		_draw_enemy_bullet(enemy_bullet_position)
-
-	for laser in charged_lasers:
-		_draw_charged_laser(laser)
+	bullet_manager.draw(self)
 
 	for enemy in enemies:
 		_draw_enemy(enemy)
@@ -218,17 +207,15 @@ func _reset_run() -> void:
 	boss_health = BOSS_MAX_HEALTH
 	boss_fire_timer = 0.0
 	boss_weave = 0.0
-	bullets.clear()
+	bullet_manager.reset()
 	enemies.clear()
-	enemy_bullets.clear()
-	charged_lasers.clear()
 	effects.clear()
 
 
 func _apply_player_events(player_events: Dictionary) -> void:
 	var shots: Array = player_events["shots"]
 	for shot in shots:
-		bullets.append(shot)
+		bullet_manager.add_player_shot(shot)
 	if not shots.is_empty():
 		_play_sfx("player_shot")
 	if bool(player_events["charge_released"]):
@@ -239,7 +226,7 @@ func _apply_player_events(player_events: Dictionary) -> void:
 
 func _fire_charged_laser() -> void:
 	var player_pos: Vector2 = player_controller.position
-	charged_lasers.append({
+	bullet_manager.add_charged_laser({
 		"x": player_pos.x,
 		"top_y": PLAYFIELD.position.y,
 		"bottom_y": player_pos.y - 28.0,
@@ -273,7 +260,7 @@ func _use_bomb() -> void:
 	if not player_controller.consume_bomb():
 		return
 	bomb_flash_timer = 0.28
-	enemy_bullets.clear()
+	bullet_manager.clear_enemy_bullets()
 	for enemy in enemies:
 		var enemy_position: Vector2 = enemy["position"]
 		enemy["health"] = 0
@@ -310,22 +297,6 @@ func _update_enemy_spawning(delta: float) -> void:
 	})
 
 
-func _update_bullets(delta: float) -> void:
-	for bullet in bullets:
-		var bullet_position: Vector2 = bullet["position"]
-		var bullet_velocity: Vector2 = bullet["velocity"]
-		bullet_position += bullet_velocity * delta
-		bullet["position"] = bullet_position
-	bullets = bullets.filter(_is_player_bullet_active)
-
-
-func _update_charged_lasers(delta: float) -> void:
-	for laser in charged_lasers:
-		laser["age"] = float(laser["age"]) + delta
-		laser["ttl"] = float(laser["ttl"]) - delta
-	charged_lasers = charged_lasers.filter(func(laser: Dictionary) -> bool: return float(laser["ttl"]) > 0.0)
-
-
 func _update_enemies(delta: float) -> void:
 	for enemy in enemies:
 		var wobble: float = enemy["wobble"] + delta * 3.0
@@ -339,7 +310,7 @@ func _update_enemies(delta: float) -> void:
 		if float(enemy["fire_timer"]) <= 0.0 and PLAYFIELD.has_point(enemy_position):
 			enemy["fire_timer"] = ENEMY_BULLET_INTERVAL
 			var to_player: Vector2 = (player_controller.position - enemy_position).normalized()
-			enemy_bullets.append({"position": enemy_position + Vector2(0, 20), "velocity": to_player * 260.0})
+			bullet_manager.add_enemy_bullet({"position": enemy_position + Vector2(0, 20), "velocity": to_player * 260.0})
 	enemies = enemies.filter(_is_enemy_active)
 
 
@@ -358,7 +329,7 @@ func _start_boss() -> void:
 	boss_health = BOSS_MAX_HEALTH
 	boss_fire_timer = 0.8
 	enemies.clear()
-	enemy_bullets.clear()
+	bullet_manager.clear_enemy_bullets()
 	status_label.text = "WARNING: NULL RELAY SERAPH"
 	_play_sfx("boss_warning")
 
@@ -401,50 +372,41 @@ func _fire_boss_spread(count: int, speed: float, arc_width: float) -> void:
 	for i in range(count):
 		var angle := start_angle + step * float(i)
 		var velocity := Vector2(cos(angle), sin(angle)) * speed
-		enemy_bullets.append({"position": boss_pos + Vector2(0, 46), "velocity": velocity})
+		bullet_manager.add_enemy_bullet({"position": boss_pos + Vector2(0, 46), "velocity": velocity})
 
 
 func _fire_aimed_boss_shot(speed: float) -> void:
 	var to_player: Vector2 = (player_controller.position - boss_pos).normalized()
-	enemy_bullets.append({"position": boss_pos + Vector2(-28, 30), "velocity": to_player.rotated(-0.1) * speed})
-	enemy_bullets.append({"position": boss_pos + Vector2(28, 30), "velocity": to_player.rotated(0.1) * speed})
-
-
-func _update_enemy_bullets(delta: float) -> void:
-	for enemy_bullet in enemy_bullets:
-		var bullet_position: Vector2 = enemy_bullet["position"]
-		var bullet_velocity: Vector2 = enemy_bullet["velocity"]
-		bullet_position += bullet_velocity * delta
-		enemy_bullet["position"] = bullet_position
-	enemy_bullets = enemy_bullets.filter(_is_enemy_bullet_active)
+	bullet_manager.add_enemy_bullet({"position": boss_pos + Vector2(-28, 30), "velocity": to_player.rotated(-0.1) * speed})
+	bullet_manager.add_enemy_bullet({"position": boss_pos + Vector2(28, 30), "velocity": to_player.rotated(0.1) * speed})
 
 
 func _update_collisions() -> void:
 	if boss_active:
-		for bullet in bullets:
+		for bullet in bullet_manager.player_bullets:
 			var bullet_position_for_boss: Vector2 = bullet["position"]
 			if boss_pos.distance_to(bullet_position_for_boss) <= BOSS_RADIUS + BULLET_RADIUS:
 				boss_health -= int(bullet["damage"])
-				bullet["position"] = Vector2(bullet_position_for_boss.x, -9999.0)
+				bullet_manager.mark_player_bullet_spent(bullet)
 				score += 5
 				if boss_health <= 0:
 					_defeat_boss()
 					return
 
 	for enemy in enemies:
-		for bullet in bullets:
+		for bullet in bullet_manager.player_bullets:
 			var enemy_position: Vector2 = enemy["position"]
 			var bullet_position: Vector2 = bullet["position"]
 			if enemy_position.distance_to(bullet_position) <= ENEMY_RADIUS + BULLET_RADIUS:
 				enemy["health"] = int(enemy["health"]) - int(bullet["damage"])
-				bullet["position"] = Vector2(bullet_position.x, -9999.0)
+				bullet_manager.mark_player_bullet_spent(bullet)
 				if int(enemy["health"]) <= 0:
 					score += 100 + combo * 10
 					combo += 1
 					_add_explosion(enemy_position, Color("#ffd166"), 34.0)
 					_play_sfx("enemy_destroy")
 
-	bullets = bullets.filter(_is_player_bullet_active)
+	bullet_manager.prune_player_bullets(PLAYFIELD)
 
 	if player_controller.invuln_timer > 0.0:
 		return
@@ -457,11 +419,11 @@ func _update_collisions() -> void:
 			_add_explosion(enemy_position, Color("#ff5d78"), 40.0)
 			return
 
-	for enemy_bullet in enemy_bullets:
+	for enemy_bullet in bullet_manager.enemy_bullets:
 		var enemy_bullet_position: Vector2 = enemy_bullet["position"]
 		if player_controller.position.distance_to(enemy_bullet_position) <= PLAYER_RADIUS + 8.0:
 			_damage_player()
-			enemy_bullet["position"] = Vector2(enemy_bullet_position.x, PLAYFIELD.end.y + 999.0)
+			bullet_manager.mark_enemy_bullet_spent(enemy_bullet, PLAYFIELD)
 			return
 
 
@@ -476,7 +438,7 @@ func _damage_player() -> void:
 		return
 
 	if bool(damage_result["respawned"]):
-		enemy_bullets.clear()
+		bullet_manager.clear_enemy_bullets()
 
 
 func _game_over() -> void:
@@ -494,7 +456,7 @@ func _level_clear() -> void:
 	subtitle_label.text = "Sonic Wave Cannon"
 	status_label.text = "Sky Arc Breach clear  |  Score: %d  |  Press Enter or Start" % score
 	enemies.clear()
-	enemy_bullets.clear()
+	bullet_manager.clear_enemy_bullets()
 	_play_sfx("pickup")
 
 
@@ -508,8 +470,8 @@ func _defeat_boss() -> void:
 	boss_health = 0
 	score += 5000 + combo * 25
 	combo += 10
-	bullets.clear()
-	enemy_bullets.clear()
+	bullet_manager.clear_player_bullets()
+	bullet_manager.clear_enemy_bullets()
 	_level_clear()
 
 
@@ -517,19 +479,9 @@ func _update_hud() -> void:
 	hud_label.text = ""
 
 
-func _is_player_bullet_active(bullet: Dictionary) -> bool:
-	var bullet_position: Vector2 = bullet["position"]
-	return bullet_position.y > PLAYFIELD.position.y - 40.0
-
-
 func _is_enemy_active(enemy: Dictionary) -> bool:
 	var enemy_position: Vector2 = enemy["position"]
 	return enemy_position.y < PLAYFIELD.end.y + 60.0 and int(enemy["health"]) > 0
-
-
-func _is_enemy_bullet_active(enemy_bullet: Dictionary) -> bool:
-	var bullet_position: Vector2 = enemy_bullet["position"]
-	return PLAYFIELD.grow(60.0).has_point(bullet_position)
 
 
 func _add_explosion(pos: Vector2, color: Color, radius: float) -> void:
@@ -686,32 +638,6 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	else:
 		_draw_texture_centered(choir_drone_texture, center + Vector2(0, 2 + sin(wobble * 1.7) * 2.0), Vector2(78, 70), sin(wobble) * 0.05)
 	draw_circle(_pixel_snap(center), 7.0, Color("#ffd166"))
-
-
-func _draw_player_bullet(pos: Vector2) -> void:
-	var snapped := _pixel_snap(pos)
-	draw_rect(Rect2(snapped + Vector2(-6, -20), Vector2(12, 38)), Color(0.0, 0.45, 1.0, 0.22))
-	draw_rect(Rect2(snapped + Vector2(-3, -18), Vector2(6, 34)), Color("#00a5ff"))
-	draw_rect(Rect2(snapped + Vector2(-1, -16), Vector2(2, 30)), Color("#e8f7ff"))
-
-
-func _draw_enemy_bullet(pos: Vector2) -> void:
-	var snapped := _pixel_snap(pos)
-	draw_circle(snapped, 10.0, Color("#ff2f80"))
-	draw_circle(snapped, 5.0, Color("#ffd166"))
-	draw_arc(snapped, 15.0, 0.0, TAU, 16, Color(1.0, 0.2, 0.55, 0.65), 3.0)
-
-
-func _draw_charged_laser(laser: Dictionary) -> void:
-	var x: float = laser["x"]
-	var top_y: float = laser["top_y"]
-	var bottom_y: float = laser["bottom_y"]
-	var width: float = laser["width"]
-	var alpha := clampf(float(laser["ttl"]) / CHARGE_LASER_DURATION, 0.0, 1.0)
-	var rect := Rect2(Vector2(x - width * 0.5, top_y), Vector2(width, bottom_y - top_y))
-	draw_rect(rect.grow(14.0), Color(0.1, 0.85, 1.0, 0.16 * alpha))
-	draw_rect(rect, Color(0.65, 0.98, 1.0, 0.55 * alpha))
-	draw_line(Vector2(x, top_y), Vector2(x, bottom_y), Color(1.0, 1.0, 1.0, 0.88 * alpha), 7.0)
 
 
 func _draw_effect(effect: Dictionary) -> void:

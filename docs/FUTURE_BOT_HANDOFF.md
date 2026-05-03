@@ -31,7 +31,8 @@
 - `scripts/managers/audio_manager.gd` owns procedural SFX generation and pooled playback.
 - `scripts/ui/hud_renderer.gd` owns the current side-panel HUD drawing.
 - `scripts/player/player_controller.gd` owns player position, movement, lives, shields, bombs, invulnerability, fire timing, and charge timing.
-- `scripts/core/main_game.gd` still owns bullets, enemies, boss, collision, and most rendering logic. Continue extracting these in small playable slices.
+- `scripts/bullets/bullet_manager.gd` owns player bullets, enemy bullets, charged laser lifetime, projectile movement, and projectile drawing.
+- `scripts/core/main_game.gd` still owns enemies, boss, collision, level flow, and most non-projectile rendering logic. Continue extracting these in small playable slices.
 
 ## Bot Working Rules
 
