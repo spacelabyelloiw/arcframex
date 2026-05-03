@@ -37,11 +37,11 @@ func _build_sfx_stream(sfx_name: String) -> AudioStreamWAV:
 
 	match sfx_name:
 		"player_shot":
-			frequency = 980.0
-			end_frequency = 760.0
-			duration = 0.045
-			volume = 0.13
-			waveform = "pulse"
+			frequency = 1320.0
+			end_frequency = 1560.0
+			duration = 0.052
+			volume = 0.16
+			waveform = "energy_pulse"
 		"charge_release":
 			frequency = 1400.0
 			end_frequency = 360.0
@@ -119,5 +119,10 @@ func _sample_wave(waveform: String, frequency: float, t: float, progress: float)
 		"alarm":
 			var gate := 1.0 if int(progress * 12.0) % 2 == 0 else 0.35
 			return sin(TAU * frequency * t) * gate
+		"energy_pulse":
+			var gate := 1.0 if int(progress * 5.0) % 2 == 0 else 0.55
+			var carrier := sin(TAU * frequency * t)
+			var overtone := sin(TAU * frequency * 2.02 * t) * 0.35
+			return (carrier + overtone) * gate
 		_:
 			return sin(TAU * frequency * t)

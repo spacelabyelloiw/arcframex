@@ -2,7 +2,7 @@ extends RefCounted
 
 const PLAYER_SPEED := 420.0
 const FOCUS_SPEED := 230.0
-const FIRE_INTERVAL := 0.11
+const FIRE_INTERVAL := 0.075
 const CHARGE_TIME := 1.2
 
 var position := Vector2.ZERO
@@ -84,8 +84,8 @@ func _update_actions(delta: float) -> Dictionary:
 
 	if fire_pressed and fire_timer <= 0.0:
 		fire_timer = FIRE_INTERVAL
-		shots.append({"position": position + Vector2(-10, -24), "velocity": Vector2(0, -900), "damage": 1})
-		shots.append({"position": position + Vector2(10, -24), "velocity": Vector2(0, -900), "damage": 1})
+		shots.append({"position": position + Vector2(-10, -24), "velocity": Vector2(0, -1250), "damage": 1})
+		shots.append({"position": position + Vector2(10, -24), "velocity": Vector2(0, -1250), "damage": 1})
 
 	was_fire_pressed = fire_pressed
 	return {

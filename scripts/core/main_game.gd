@@ -12,12 +12,22 @@ const BOSS_RADIUS := 62.0
 const CHARGE_TIME := 1.2
 const CHARGE_LASER_DURATION := 0.22
 const CHARGE_LASER_WIDTH := 52.0
+const BACKGROUND_SCROLL_SPEED := 154.0
+const HIT_FLASH_TIME := 0.11
 
 var player_texture: Texture2D = preload("res://assets/art/player/spr_player_ship_base.png")
 var choir_drone_texture: Texture2D = preload("res://assets/art/enemies/spr_choir_drone.png")
 var needle_runner_texture: Texture2D = preload("res://assets/art/enemies/spr_needle_runner.png")
 var boss_texture: Texture2D = preload("res://assets/art/bosses/spr_null_relay_seraph.png")
 var sky_arc_background_texture: Texture2D = preload("res://assets/art/backgrounds/bg_sky_arc_breach.png")
+var explosion_frame_textures: Array[Texture2D] = [
+	preload("res://assets/art/vfx/explosion_flame_00.png"),
+	preload("res://assets/art/vfx/explosion_flame_01.png"),
+	preload("res://assets/art/vfx/explosion_flame_02.png"),
+	preload("res://assets/art/vfx/explosion_flame_03.png"),
+	preload("res://assets/art/vfx/explosion_flame_04.png"),
+	preload("res://assets/art/vfx/explosion_flame_05.png")
+]
 var audio_manager_script: Script = preload("res://scripts/managers/audio_manager.gd")
 var hud_renderer_script: Script = preload("res://scripts/ui/hud_renderer.gd")
 var player_controller_script: Script = preload("res://scripts/player/player_controller.gd")
@@ -244,6 +254,7 @@ func _apply_charged_laser_damage(laser_x: float, laser_width: float) -> void:
 		var enemy_position: Vector2 = enemy["position"]
 		if absf(enemy_position.x - laser_x) <= laser_width * 0.7:
 			enemy["health"] = int(enemy["health"]) - 8
+			enemy["hit_flash"] = HIT_FLASH_TIME
 			if int(enemy["health"]) <= 0:
 				_add_explosion(enemy_position, Color("#8ff6ff"), 42.0)
 				score += 150 + combo * 10
@@ -293,7 +304,8 @@ func _update_enemy_spawning(delta: float) -> void:
 		"health": 2 if enemy_type == "needle_runner" else 3,
 		"type": enemy_type,
 		"fire_timer": rng.randf_range(0.4, ENEMY_BULLET_INTERVAL),
-		"wobble": rng.randf_range(0.0, TAU)
+		"wobble": rng.randf_range(0.0, TAU),
+		"hit_flash": 0.0
 	})
 
 
@@ -306,6 +318,7 @@ func _update_enemies(delta: float) -> void:
 		enemy_position.x += sin(wobble) * 32.0 * delta
 		enemy["wobble"] = wobble
 		enemy["position"] = enemy_position
+		enemy["hit_flash"] = maxf(float(enemy.get("hit_flash", 0.0)) - delta, 0.0)
 		enemy["fire_timer"] = float(enemy["fire_timer"]) - delta
 		if float(enemy["fire_timer"]) <= 0.0 and PLAYFIELD.has_point(enemy_position):
 			enemy["fire_timer"] = ENEMY_BULLET_INTERVAL
@@ -387,6 +400,7 @@ func _update_collisions() -> void:
 			var bullet_position_for_boss: Vector2 = bullet["position"]
 			if boss_pos.distance_to(bullet_position_for_boss) <= BOSS_RADIUS + BULLET_RADIUS:
 				boss_health -= int(bullet["damage"])
+				boss_hit_flash = HIT_FLASH_TIME
 				bullet_manager.mark_player_bullet_spent(bullet)
 				score += 5
 				if boss_health <= 0:
@@ -399,6 +413,7 @@ func _update_collisions() -> void:
 			var bullet_position: Vector2 = bullet["position"]
 			if enemy_position.distance_to(bullet_position) <= ENEMY_RADIUS + BULLET_RADIUS:
 				enemy["health"] = int(enemy["health"]) - int(bullet["damage"])
+				enemy["hit_flash"] = HIT_FLASH_TIME
 				bullet_manager.mark_player_bullet_spent(bullet)
 				if int(enemy["health"]) <= 0:
 					score += 100 + combo * 10
@@ -485,7 +500,7 @@ func _is_enemy_active(enemy: Dictionary) -> bool:
 
 
 func _add_explosion(pos: Vector2, color: Color, radius: float) -> void:
-	effects.append({"position": pos, "color": color, "radius": radius, "ttl": 0.34, "age": 0.0})
+	effects.append({"position": pos, "color": color, "radius": radius, "ttl": 0.34, "age": 0.0, "type": "flame_explosion"})
 
 
 func _add_shake(duration: float, strength: float) -> void:
@@ -574,7 +589,7 @@ func _draw_scrolling_background() -> void:
 		return
 
 	var bg_height := PLAYFIELD.size.x * float(sky_arc_background_texture.get_height()) / float(sky_arc_background_texture.get_width())
-	var scroll := fmod(stage_time * 88.0, bg_height)
+	var scroll := fmod(stage_time * BACKGROUND_SCROLL_SPEED, bg_height)
 	var bg_size := Vector2(PLAYFIELD.size.x, bg_height)
 	var first_y := PLAYFIELD.position.y + scroll - bg_height
 	while first_y > PLAYFIELD.position.y:
@@ -615,9 +630,12 @@ func _draw_boss() -> void:
 	if not boss_started:
 		return
 
-	_draw_texture_centered(boss_texture, boss_pos + Vector2(0, 12 + sin(boss_weave * 7.0) * 2.0), Vector2(330, 305), sin(boss_weave * 2.0) * 0.025)
+	var boss_draw_pos := boss_pos + Vector2(0, 12 + sin(boss_weave * 7.0) * 2.0)
+	var boss_rotation := sin(boss_weave * 2.0) * 0.025
+	_draw_texture_centered(boss_texture, boss_draw_pos, Vector2(330, 305), boss_rotation)
 	if boss_hit_flash > 0.0:
-		draw_circle(boss_pos, 104.0, Color(1.0, 1.0, 1.0, boss_hit_flash * 2.8))
+		_draw_texture_centered(boss_texture, boss_draw_pos, Vector2(330, 305), boss_rotation, Color(1.0, 1.0, 1.0, 0.75))
+		draw_circle(boss_pos, 112.0, Color(1.0, 1.0, 1.0, boss_hit_flash * 2.0))
 	draw_circle(boss_pos + Vector2(0, 4), 18.0 + sin(boss_weave * 8.0) * 3.0, Color(1.0, 0.35, 0.95, 0.65))
 	draw_arc(boss_pos, BOSS_RADIUS, 0.0, TAU, 32, Color("#ffe6f1"), 3.0)
 
@@ -633,10 +651,15 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	var enemy_type: String = enemy["type"]
 	var center: Vector2 = enemy["position"]
 	var wobble: float = enemy["wobble"]
+	var hit_flash: float = float(enemy.get("hit_flash", 0.0))
 	if enemy_type == "needle_runner":
 		_draw_texture_centered(needle_runner_texture, center + Vector2(0, 2), Vector2(78, 78), sin(wobble) * 0.08)
+		if hit_flash > 0.0:
+			_draw_texture_centered(needle_runner_texture, center + Vector2(0, 2), Vector2(78, 78), sin(wobble) * 0.08, Color(1.0, 1.0, 1.0, 0.82))
 	else:
 		_draw_texture_centered(choir_drone_texture, center + Vector2(0, 2 + sin(wobble * 1.7) * 2.0), Vector2(78, 70), sin(wobble) * 0.05)
+		if hit_flash > 0.0:
+			_draw_texture_centered(choir_drone_texture, center + Vector2(0, 2 + sin(wobble * 1.7) * 2.0), Vector2(78, 70), sin(wobble) * 0.05, Color(1.0, 1.0, 1.0, 0.82))
 	draw_circle(_pixel_snap(center), 7.0, Color("#ffd166"))
 
 
@@ -648,16 +671,22 @@ func _draw_effect(effect: Dictionary) -> void:
 	var ttl: float = effect["ttl"]
 	var progress := clampf(age / (age + ttl), 0.0, 1.0)
 	var alpha := 1.0 - progress
+	if String(effect.get("type", "")) == "flame_explosion" and not explosion_frame_textures.is_empty():
+		var frame_index := mini(int(progress * float(explosion_frame_textures.size())), explosion_frame_textures.size() - 1)
+		var frame_texture := explosion_frame_textures[frame_index]
+		var frame_size := Vector2(radius * 2.2, radius * 2.2) * lerpf(0.55, 1.15, progress)
+		_draw_texture_centered(frame_texture, effect_position, frame_size, 0.0, Color(1.0, 1.0, 1.0, alpha))
+		return
 	draw_circle(effect_position, radius * progress, Color(effect_color.r, effect_color.g, effect_color.b, 0.28 * alpha))
 	draw_arc(effect_position, radius * progress, 0.0, TAU, 36, Color(effect_color.r, effect_color.g, effect_color.b, alpha), 4.0)
 
 
-func _draw_texture_centered(texture: Texture2D, center: Vector2, size: Vector2, rotation := 0.0) -> void:
+func _draw_texture_centered(texture: Texture2D, center: Vector2, size: Vector2, rotation := 0.0, modulate: Color = Color.WHITE) -> void:
 	if texture == null:
 		return
 	var snapped := _pixel_snap(center)
 	draw_set_transform(snapped + draw_shake_offset, rotation, Vector2.ONE)
-	draw_texture_rect(texture, Rect2(-size * 0.5, size), false)
+	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, modulate)
 	draw_set_transform(draw_shake_offset, 0.0, Vector2.ONE)
 
 
