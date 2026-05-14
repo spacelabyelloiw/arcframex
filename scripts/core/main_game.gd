@@ -16,6 +16,10 @@ const BACKGROUND_SCROLL_SPEED := 154.0
 const HIT_FLASH_TIME := 0.11
 
 var player_texture: Texture2D = preload("res://assets/art/player/spr_player_ship_base.png")
+var player_bank_left_1_texture: Texture2D
+var player_bank_left_2_texture: Texture2D
+var player_bank_right_1_texture: Texture2D
+var player_bank_right_2_texture: Texture2D
 var choir_drone_texture: Texture2D = preload("res://assets/art/enemies/spr_choir_drone.png")
 var needle_runner_texture: Texture2D = preload("res://assets/art/enemies/spr_needle_runner.png")
 var boss_texture: Texture2D = preload("res://assets/art/bosses/spr_null_relay_seraph.png")
@@ -70,6 +74,7 @@ func _ready() -> void:
 	hud_renderer = hud_renderer_script.new()
 	player_controller = player_controller_script.new()
 	bullet_manager = bullet_manager_script.new()
+	_load_player_bank_textures()
 	_ensure_input_map()
 	_setup_audio()
 	_setup_ui()
@@ -164,6 +169,20 @@ func _setup_ui() -> void:
 func _setup_audio() -> void:
 	audio_manager = audio_manager_script.new()
 	add_child(audio_manager)
+
+
+func _load_player_bank_textures() -> void:
+	player_bank_left_1_texture = _load_image_texture("res://assets/art/player/spr_player_ship_bank_left_1.png")
+	player_bank_left_2_texture = _load_image_texture("res://assets/art/player/spr_player_ship_bank_left_2.png")
+	player_bank_right_1_texture = _load_image_texture("res://assets/art/player/spr_player_ship_bank_right_1.png")
+	player_bank_right_2_texture = _load_image_texture("res://assets/art/player/spr_player_ship_bank_right_2.png")
+
+
+func _load_image_texture(path: String) -> Texture2D:
+	var image := Image.new()
+	if image.load(path) != OK:
+		return null
+	return ImageTexture.create_from_image(image)
 
 
 func _make_label(pos: Vector2, size: Vector2, font_size: int, align: HorizontalAlignment) -> Label:
@@ -616,7 +635,8 @@ func _draw_player() -> void:
 	var bob := sin(stage_time * 13.0) * 2.0
 	var player_pos: Vector2 = player_controller.position
 	var charge_timer: float = player_controller.charge_timer
-	_draw_texture_centered(player_texture, player_pos + Vector2(lean, -8 + bob), Vector2(118, 128), input_x * 0.08)
+	var active_player_texture := _get_player_bank_texture(input_x)
+	_draw_texture_centered(active_player_texture, player_pos + Vector2(lean, -8 + bob), Vector2(118, 128), input_x * 0.025)
 	if charge_timer >= CHARGE_TIME:
 		draw_arc(player_pos, 42.0 + sin(stage_time * 18.0) * 4.0, 0.0, TAU, 36, Color("#8ff6ff"), 4.0)
 	elif charge_timer > 0.0:
@@ -624,6 +644,18 @@ func _draw_player() -> void:
 	draw_circle(player_pos, 5.0, Color(0.9, 1.0, 1.0, 0.85))
 	draw_circle(player_pos + Vector2(0, 2), 8.0, Color("#f7d36b"))
 	draw_circle(_pixel_snap(player_pos + Vector2(0, 42)), 10.0 + sin(stage_time * 18.0) * 2.0, Color("#ff7a33"))
+
+
+func _get_player_bank_texture(input_x: float) -> Texture2D:
+	if input_x <= -0.65 and player_bank_left_2_texture != null:
+		return player_bank_left_2_texture
+	if input_x <= -0.18 and player_bank_left_1_texture != null:
+		return player_bank_left_1_texture
+	if input_x >= 0.65 and player_bank_right_2_texture != null:
+		return player_bank_right_2_texture
+	if input_x >= 0.18 and player_bank_right_1_texture != null:
+		return player_bank_right_1_texture
+	return player_texture
 
 
 func _draw_boss() -> void:
